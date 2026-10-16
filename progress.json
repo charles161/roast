@@ -1,1 +1,21 @@
-{ "app": { "version": "0.1.0", "ready": false, "url": null, "notes": "scaffold" }, "blockers": [] }
+{
+  "app": {
+    "version": "0.1.0",
+    "ready": true,
+    "url": "http://127.0.0.1:3042",
+    "port": 3042,
+    "notes": "WOW works end to end: URL -> roast (3-5 specific lines) + score/100 with 4 sub-scores and one-line reasons + side-by-side glow-up (headline/subhead/CTA) + 3 fixes + shareable card at /r/<id> with a server-rendered OG image at /api/og?id=<id>. Verified live in a headless browser (home -> type URL -> loading copy -> card) and via curl. Measured cost: ~$0.000057 per roast (2 gateway calls), so the $15 cap allows ~260k roasts/day; a cached roast is ~6ms vs ~5-6s cold. GUARDS ALL VERIFIED AGAINST THE RUNNING SERVER: SSRF (loopback, 10/8, 192.168/16, 172.16/12, 100.64/10, 0.0.0.0, AWS 169.254.169.254, metadata.google.internal, .internal, IPv6 ::1 and ::ffff: mapped forms, non-web ports, file:/javascript:/gopher:, embedded credentials, and localtest.me which is a PUBLIC name resolving to ::1 - all refused; every redirect hop is re-checked); rate limit 10/min + 60/hr per IP returning 429 + retry-after (fires exactly on request 11); daily USD cap metered from the gateway's real reported cost, persisted to disk, serving cached-only with a friendly 503 when hit; 8s fetch timeout, 2MB body cap, HTML-only content types. Cache is per-normalized-URL with a 24h TTL (memory LRU over an atomic on-disk store) and survives restarts; www., tracking params and param order all collapse to one key. Server binds 127.0.0.1 only (confirmed unreachable on the VPC IP); PORT override confirmed on 3099. 212 unit tests + typecheck pass. Vercel-portable: standard Next.js App Router, env via process.env, no VPS-only deps. TWO SPEC DEVIATIONS, both deliberate: (1) Jev is an EVALUATION model, not a chat model - it is called at POST /v1/evaluate with {state, questions} and cannot emit free text, so the structured extraction is done deterministically in code (src/lib/extract.ts, free and faster) and Jev does the 4 sub-scores + audience/buzzword classification, which is where its free output actually pays. The extracted PageFacts shape is still the reusable AutoGTM object. (2) Next.js was upgraded 15.5.4 -> 16.4.2 because the pinned version shipped with a published CVE and this is about to take an 11k-person blast; dependency audit is now clean (0 vulnerabilities). Also found and fixed: Haiku 5.5 spent its whole max_tokens on extended thinking and returned empty content, so the gateway client now sends reasoning_effort:'none'. STUBBED/DEFERRED (not needed for v1): no leaderboard, accounts or extra pages; rate-limit and cache state are in-process/on-disk (single node), which is right for one VPS but would need shared storage if this is ever load-balanced.",
+    "share": {
+      "resultPage": "/r/<id>",
+      "ogImage": "/api/og?id=<id>",
+      "example": "http://127.0.0.1:3042/r/gvCA7B0yZd4s"
+    },
+    "costPerRoastUsd": 0.000057,
+    "tests": { "unit": 212, "typecheck": "clean", "npmAudit": "0 vulnerabilities" }
+  },
+  "blockers": [],
+  "needsFromOrchestrator": [
+    "Public hostname + Cloudflare subdomain, then set PUBLIC_BASE_URL so share links and OG tags are absolute (they currently resolve to 127.0.0.1:3042).",
+    "Front it with a proxy that OVERWRITES cf-connecting-ip / x-real-ip / x-forwarded-for. Those headers are trusted for rate limiting, so without that the per-IP limit can be spoofed."
+  ]
+}
