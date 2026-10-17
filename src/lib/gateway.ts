@@ -29,9 +29,15 @@ export async function trackCost<T>(fn: () => Promise<T>): Promise<{ value: T; co
 }
 
 function cfg(): { url: string; key: string } {
-  const url = process.env.GATEWAY_URL;
+  const raw = process.env.GATEWAY_URL;
   const key = process.env.GATEWAY_KEY || process.env.AI_GATEWAY_API_KEY;
-  if (!url || !key) throw new GatewayError('LLM gateway is not configured.');
+  if (!raw || !key) throw new GatewayError('LLM gateway is not configured.');
+  // Accept either the full chat-completions endpoint or the gateway base: a
+  // bare `.../v1` is normalized to `.../v1/chat/completions` so a common env
+  // misconfig can't silently break every scan. evaluate() derives its own path
+  // from the origin, so it is unaffected either way.
+  const trimmed = raw.replace(/\/+$/, '');
+  const url = trimmed.endsWith('/chat/completions') ? trimmed : `${trimmed}/chat/completions`;
   return { url, key };
 }
 
