@@ -100,8 +100,17 @@ function sweep(now: number, longest: number): void {
 
 /** Best-effort client IP from proxy headers, falling back to a shared bucket. */
 export function clientIp(headers: Headers): string {
-  const cf = headers.get('cf-connecting-ip');
-  if (cf) return cf.trim();
+  // Only trust headers the hosting platform sets itself. On Vercel there is no
+  // Cloudflare in front, so `cf-connecting-ip` is attacker-controlled and must
+  // NOT be trusted (trusting it let anyone mint a fresh rate-limit bucket per
+  // request). Vercel sets x-vercel-forwarded-for / x-real-ip / x-forwarded-for
+  // from the real edge connection; a VPS behind Cloudflare also sets
+  // x-forwarded-for, so this is correct on both.
+  const vercel = headers.get('x-vercel-forwarded-for');
+  if (vercel) {
+    const first = vercel.split(',')[0]?.trim();
+    if (first) return first;
+  }
   const real = headers.get('x-real-ip');
   if (real) return real.trim();
   const fwd = headers.get('x-forwarded-for');

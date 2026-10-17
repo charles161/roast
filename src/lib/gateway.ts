@@ -46,13 +46,37 @@ function evaluateUrl(chatUrl: string): string {
   return `${u.origin}/v1/evaluate`;
 }
 
-/** Pull the real USD cost the gateway reports, meter it, and bill the request. */
+/**
+ * Fallback per-1M-token prices ($), used ONLY when the gateway reports no cost.
+ * The AI Gateway's raw chat/completions response carries token `usage` but no
+ * cost field, so without this the daily spend cap meters Haiku at $0 and never
+ * trips — the whole cost backstop for a viral spike. Matched by model-name
+ * substring; refine if a published price changes.
+ */
+const FALLBACK_PRICE_PER_M: Record<string, { in: number; out: number }> = {
+  haiku: { in: 0.1, out: 0.5 }, // anthropic/claude-haiku-5.5
+};
+
+/** Estimate a call's cost from token usage when the gateway doesn't report one. */
+export function usageCost(model: unknown, usage: unknown): number {
+  if (typeof model !== 'string' || !usage || typeof usage !== 'object') return 0;
+  const key = Object.keys(FALLBACK_PRICE_PER_M).find((k) => model.toLowerCase().includes(k));
+  if (!key) return 0;
+  const p = FALLBACK_PRICE_PER_M[key]!;
+  const u = usage as Record<string, unknown>;
+  const inTok = Number(u.prompt_tokens ?? u.input_tokens ?? 0);
+  const outTok = Number(u.completion_tokens ?? u.output_tokens ?? 0);
+  const c = (inTok * p.in + outTok * p.out) / 1_000_000;
+  return Number.isFinite(c) && c > 0 ? c : 0;
+}
+
+/** Bill a request: prefer the gateway's reported cost, else estimate from usage. */
 async function meter(payload: unknown): Promise<void> {
   let cost = 0;
   try {
-    const gw = (payload as { providerMetadata?: { gateway?: { cost?: string } } })?.providerMetadata?.gateway;
-    const parsed = Number(gw?.cost ?? 0);
-    cost = Number.isFinite(parsed) ? parsed : 0;
+    const p = payload as { providerMetadata?: { gateway?: { cost?: string } }; usage?: unknown; model?: unknown };
+    const reported = Number(p?.providerMetadata?.gateway?.cost ?? 0);
+    cost = Number.isFinite(reported) && reported > 0 ? reported : usageCost(p?.model, p?.usage);
   } catch { cost = 0; }
   const box = costBox.getStore();
   if (box && cost > 0) box.usd += cost;

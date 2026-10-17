@@ -68,20 +68,26 @@ describe('rateLimit', () => {
 });
 
 describe('clientIp', () => {
-  it('prefers cf-connecting-ip', () => {
-    const h = new Headers({ 'cf-connecting-ip': '1.1.1.1', 'x-forwarded-for': '2.2.2.2' });
+  it('prefers x-vercel-forwarded-for (platform-set, trustworthy)', () => {
+    const h = new Headers({ 'x-vercel-forwarded-for': '1.1.1.1, 9.9.9.9', 'x-real-ip': '2.2.2.2' });
     expect(clientIp(h)).toBe('1.1.1.1');
   });
 
-  it('then x-real-ip', () => {
-    expect(clientIp(new Headers({ 'x-real-ip': '3.3.3.3' }))).toBe('3.3.3.3');
+  it('does NOT trust cf-connecting-ip (spoofable with no Cloudflare in front)', () => {
+    // Attacker sets cf-connecting-ip per request; we must ignore it and use
+    // the platform header so every spoofed value maps to the SAME real bucket.
+    const h = new Headers({ 'cf-connecting-ip': '6.6.6.6', 'x-real-ip': '3.3.3.3' });
+    expect(clientIp(h)).toBe('3.3.3.3');
   });
 
-  it('takes the first hop of x-forwarded-for', () => {
+  it('falls back to x-real-ip then x-forwarded-for', () => {
+    expect(clientIp(new Headers({ 'x-real-ip': '3.3.3.3' }))).toBe('3.3.3.3');
     expect(clientIp(new Headers({ 'x-forwarded-for': '4.4.4.4, 5.5.5.5' }))).toBe('4.4.4.4');
   });
 
-  it('falls back to a shared bucket when no header is present', () => {
+  it('falls back to a shared bucket when no trusted header is present', () => {
     expect(clientIp(new Headers())).toBe('unknown');
+    // cf-connecting-ip alone is not enough to earn its own bucket.
+    expect(clientIp(new Headers({ 'cf-connecting-ip': '7.7.7.7' }))).toBe('unknown');
   });
 });
