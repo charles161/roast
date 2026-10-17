@@ -117,3 +117,64 @@ describe('www collapsing', () => {
     expect(normalizeUrl('https://www.linear.app/?utm_source=x')).toBe('https://linear.app/');
   });
 });
+
+describe('normalizeUrl — edge cases (hardening pass)', () => {
+  it('handles a bare host, www, and an uppercase scheme to the same canonical form', () => {
+    expect(normalizeUrl('google.com')).toBe('https://google.com/');
+    expect(normalizeUrl('www.google.com')).toBe('https://google.com/');
+    expect(normalizeUrl('HTTPS://Google.COM/')).toBe('https://google.com/');
+  });
+
+  it('strips tracking, folds www and sorts params on a full search URL', () => {
+    expect(normalizeUrl('https://www.google.com/search?q=x&utm_source=y')).toBe(
+      'https://google.com/search?q=x',
+    );
+  });
+
+  it('keeps a trailing slash as the root and drops a fragment', () => {
+    expect(normalizeUrl('example.com/')).toBe('https://example.com/');
+    expect(normalizeUrl('example.com/pricing/plans#compare')).toBe(
+      'https://example.com/pricing/plans',
+    );
+  });
+
+  it('strips quotes and brackets from a pasted path', () => {
+    expect(normalizeUrl('[example.com/pricing]')).toBe('https://example.com/pricing');
+    expect(normalizeUrl('(example.com)')).toBe('https://example.com/');
+  });
+
+  it('accepts an IPv6 literal without throwing (SSRF layer judges the address)', () => {
+    const out = normalizeUrl('http://[2606:4700:4700::1111]/');
+    expect(typeof out).toBe('string');
+    expect(out).toContain('[2606:4700:4700::1111]');
+  });
+
+  it('keeps an explicit default port stripped and a non-default one', () => {
+    expect(normalizeUrl('https://example.com:443/pricing')).toBe('https://example.com/pricing');
+    expect(normalizeUrl('https://example.com:8443/')).toBe('https://example.com:8443/');
+  });
+
+  it('punycodes a unicode/IDN host instead of crashing', () => {
+    expect(normalizeUrl('müller.de')).toBe('https://xn--mller-kva.de/');
+    // A Cyrillic host resolves to its punycode form, cleanly.
+    expect(normalizeUrl('рф.рф')).toBe('https://xn--p1ai.xn--p1ai/');
+  });
+
+  it('rejects a 2048+ char input with a friendly BadUrlError', () => {
+    expect(() => normalizeUrl(`https://example.com/${'a'.repeat(2100)}`)).toThrow(BadUrlError);
+  });
+
+  it.each(['', '   ', '\t\n', 'roast me', '🔥', 'just some words'])(
+    'rejects pure garbage %j with a BadUrlError',
+    (bad) => {
+      expect(() => normalizeUrl(bad)).toThrow(BadUrlError);
+    },
+  );
+
+  it.each(['javascript:alert(1)', 'data:text/html,x', 'file:///etc/passwd'])(
+    'rejects dangerous scheme %j',
+    (bad) => {
+      expect(() => normalizeUrl(bad)).toThrow(BadUrlError);
+    },
+  );
+});
