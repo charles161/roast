@@ -6,6 +6,8 @@ import { HeroProof } from './HeroProof';
 import { Logo, Mark } from './Logo';
 import { RoastAnother } from './ShareBar';
 import { WORDMARK } from '@/lib/share';
+import { getRecent, pushRecent, type RecentEntry } from '@/lib/history';
+import { track } from '@/lib/track';
 import type { ApiError, RoastResult } from '@/lib/types';
 
 const LOADING_LINES = [
@@ -69,13 +71,26 @@ export function RoastApp({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [arrived, setArrived] = useState(Boolean(initialResult));
+  const [recent, setRecent] = useState<RecentEntry[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const loadingRef = useRef<HTMLDivElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
 
+  // Client-only: load the viewer's own recent roasts after mount (keeps SSR
+  // output stable; renders nothing until there's real history).
+  useEffect(() => {
+    setRecent(getRecent());
+  }, []);
+
+  // Fire once per distinct result shown — fresh scan or a shared card.
+  useEffect(() => {
+    if (result) track('result_viewed', { id: result.id, overall: result.score.overall });
+  }, [result]);
+
   async function run(raw: string) {
     const target = raw.trim();
     if (!target || loading) return;
+    track('scan_submitted', { inputLen: target.length });
     setLoading(true);
     setError(null);
     setResult(null);
@@ -96,6 +111,16 @@ export function RoastApp({
       }
       const r = data as RoastResult;
       setResult(r);
+      // Remember it for this viewer (their own roast), newest first, capped at 3.
+      setRecent(
+        pushRecent({
+          id: r.id,
+          displayUrl: r.displayUrl,
+          score: r.score.overall,
+          createdAt: r.createdAt,
+          favicon: r.favicon,
+        }),
+      );
       // Put the shareable id in the URL without a reload, so the link is copyable.
       window.history.replaceState(null, '', `/r/${r.id}`);
       requestAnimationFrame(() =>
@@ -238,6 +263,23 @@ export function RoastApp({
           </a>
         ) : null}
       </div>
+
+      {idle && recent.length > 0 ? (
+        <div className="mt-3 flex flex-wrap items-center gap-2 text-micro text-mute">
+          <span className="label">Recent</span>
+          {recent.map((e) => (
+            <a
+              key={e.id}
+              href={`/r/${e.id}`}
+              onClick={() => track('recent_clicked', { id: e.id })}
+              className="flex items-center gap-1.5 border border-line px-2.5 py-1 text-chalk/80 transition-colors hover:border-acid hover:text-acid"
+            >
+              <span className="max-w-[14ch] truncate">{e.displayUrl}</span>
+              <span className="tabular-nums text-mute">{e.score}</span>
+            </a>
+          ))}
+        </div>
+      ) : null}
 
       {error ? (
         <div role="alert" className="cut-in mt-8 border border-rough px-4 py-3.5 text-body text-chalk">
