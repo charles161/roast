@@ -48,6 +48,29 @@ Env (`.env.local`, never committed, never sent to the client):
 Result pages live at `/r/<id>` with a server-rendered OG image at
 `/api/og?id=<id>`, so a pasted link previews richly.
 
+## The share surfaces
+
+The on-page card (`#share-card`) and the OG image are deliberately the same
+design: favicon, site name, the score dial, the verdict, the best roast line,
+before -> after, and the `roast.lightslips.ai` wordmark, so a screenshot and a
+link preview carry the same thing.
+
+- `src/lib/share.ts` is the single source for share copy — the tweet body, the
+  quote picker and `quoteWrap`, which stops us double-quoting a roast line that
+  already opens by quoting the site. The tweet budget counts the link as 23
+  characters, the way X does.
+- `src/lib/favicon.ts` inlines the site's favicon for the OG image, because
+  Satori cannot fetch one itself. The URL comes off a page we were asked to
+  roast, so it goes through the same SSRF guard as the page fetch, with no
+  redirects, a 1.2s timeout and a 192KB cap. Every failure falls back to a
+  monogram rather than a broken preview.
+- `src/lib/counter.ts` counts live entries in the result cache. It is the only
+  number on the page that is not from the current result, and it is read off
+  disk — nothing here is decorative. It stays hidden below `MIN_DISPLAY`.
+
+The reveal (dial sweep, count-up, staggered sub-scores and roast lines) runs on
+transform/opacity only and is disabled under `prefers-reduced-motion`.
+
 ### A note on Jev
 
 Jev is an **evaluation** model, not a chat model: it is called at
@@ -76,10 +99,11 @@ scores every site near zero.
 ## Tests
 
 ```bash
-npm test        # 212 unit tests
+npm test        # 244 unit tests
 npm run typecheck
 ```
 
 Covers URL normalization, the SSRF guard (IPv4/IPv6 ranges, DNS rebinding,
-redirect hops), score parsing, the cache, the rate limiter, the spend cap and
-the model-output JSON parser.
+redirect hops), score parsing, the cache, the rate limiter, the spend cap, the
+model-output JSON parser, the share-intent builder, the score -> colour bands
+and the cache counter.
