@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { JetBrains_Mono } from 'next/font/google';
 import './globals.css';
+import { PostHogProvider } from '@/components/PostHogProvider';
 
 // One family, used decisively. The whole interface is set in it.
 const jet = JetBrains_Mono({
@@ -49,8 +50,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={jet.variable}>
       <body className="min-h-dvh font-mono antialiased">
-        <div className="grid-bg" aria-hidden />
-        <div className="relative z-10">{children}</div>
+        <PostHogProvider>
+          <div className="grid-bg" aria-hidden />
+          <div className="relative z-10">{children}</div>
+        </PostHogProvider>
       </body>
     </html>
   );

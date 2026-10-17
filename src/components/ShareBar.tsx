@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { xIntentUrl } from '@/lib/share';
+import { track } from '@/lib/track';
 import type { RoastResult } from '@/lib/types';
 
 const BTN =
@@ -20,6 +21,7 @@ export function ShareBar({
   const [copied, setCopied] = useState(false);
 
   async function copy() {
+    track('share_clicked', { surface: 'copy' });
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
@@ -35,6 +37,7 @@ export function ShareBar({
         href={xIntentUrl(r, shareUrl)}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={() => track('share_clicked', { surface: 'x' })}
         className={`${BTN} border-acid bg-acid text-ink hover:bg-chalk hover:border-chalk`}
       >
         <svg viewBox="0 0 24 24" className="size-3.5" fill="currentColor" aria-hidden>

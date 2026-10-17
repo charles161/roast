@@ -1,6 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { ScoreDial, SubScoreRow } from './ScoreDial';
 import { band, temperature } from '@/lib/grade';
 import { quoteWrap, teaser, WORDMARK } from '@/lib/share';
+import { track } from '@/lib/track';
 import type { RoastResult } from '@/lib/types';
 import { RoastAnother, ShareBar } from './ShareBar';
 import { Mark } from './Logo';
@@ -191,6 +193,25 @@ export function ResultView({
   shareUrl: string;
   onAnother?: () => void;
 }) {
+  const glowRef = useRef<HTMLDivElement>(null);
+
+  // Fire once when the glow-up (the "magic") actually comes into view.
+  useEffect(() => {
+    const el = glowRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          track('glowup_viewed');
+          obs.disconnect();
+        }
+      },
+      { threshold: 0.3 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   return (
     <div>
       <ShareCard r={r} />
@@ -230,13 +251,15 @@ export function ResultView({
         </div>
       </Section>
 
-      <Section index="03" title="Same product, better words">
-        <div className="grid gap-4">
-          <Compare label="Headline" before={r.before.headline} after={r.after.headline} />
-          <Compare label="Subhead" before={r.before.subhead} after={r.after.subhead} />
-          <Compare label="CTA" before={r.before.cta} after={r.after.cta} />
-        </div>
-      </Section>
+      <div ref={glowRef}>
+        <Section index="03" title="Same product, better words">
+          <div className="grid gap-4">
+            <Compare label="Headline" before={r.before.headline} after={r.after.headline} />
+            <Compare label="Subhead" before={r.before.subhead} after={r.after.subhead} />
+            <Compare label="CTA" before={r.before.cta} after={r.after.cta} />
+          </div>
+        </Section>
+      </div>
 
       <Section index="04" title="Ship these three this afternoon">
         <ol>
