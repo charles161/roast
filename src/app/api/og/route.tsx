@@ -66,6 +66,13 @@ function imageOpts() {
   };
 }
 
+// The generic fallback must NOT be cached: a one-second KV blip or an expired
+// id would otherwise pin the generic card on a shared link's social preview for
+// a full day. The real result card is stable per id, so it keeps the long cache.
+function fallbackOpts() {
+  return { ...imageOpts(), headers: { 'cache-control': 'no-store, must-revalidate' } };
+}
+
 /** The brand glyph. Plain paths only — Satori has no defs or gradients. */
 function Glyph({ size }: { size: number }) {
   return (
@@ -291,7 +298,7 @@ export async function GET(req: Request) {
   const id = new URL(req.url).searchParams.get('id') ?? '';
   const r = isValidId(id) ? await getCached(id) : null;
 
-  if (!r) return new ImageResponse(<Fallback />, imageOpts());
+  if (!r) return new ImageResponse(<Fallback />, fallbackOpts());
 
   // Never let the icon fetch decide whether the preview renders at all.
   const mark = await faviconDataUri(r.favicon).catch(() => null);
@@ -302,6 +309,6 @@ export async function GET(req: Request) {
     // A broken preview would silently kill the share loop; a plain card is
     // always better than an error response.
     console.error('[og] render failed', err);
-    return new ImageResponse(<Fallback />, imageOpts());
+    return new ImageResponse(<Fallback />, fallbackOpts());
   }
 }
