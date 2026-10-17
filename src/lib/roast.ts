@@ -14,6 +14,14 @@ export type RoastPayload = {
   fixes: string[];
   reasons: Record<SubScoreKey, string>;
   verdict: string;
+  /** Ready-to-paste brief for a coding agent. May be '' if the model omitted it
+   *  — the pipeline fills a deterministic fallback for real landing pages. */
+  fixPrompt: string;
+};
+
+export type WriteRoastOptions = {
+  /** This page is an app/utility shell (google.com), not a landing page. */
+  isApp?: boolean;
 };
 
 const SYSTEM = `You are the sharpest landing-page critic on the internet: a world-class copywriter crossed with a stand-up comedian who has read ten thousand startup homepages and is tired of every one of them.
@@ -50,9 +58,16 @@ ACCURACY (this is not negotiable):
 
 You also write one short reason per dimension. Each reason is one line, 6-16 words, cites something actually on THIS page, and is consistent with the number given. A reason that would fit another website is wrong.
 
+3) FIX PROMPT. You also write "fixPrompt": a ready-to-paste brief an AI coding agent (Cursor, Claude Code, v0, Lovable) can run to ship the glow-up on THIS site. Imperative, agent-ready, no fluff. Shape it as:
+- one context line naming what the site is,
+- the exact verbatim changes: Replace the hero H1 with "<your new headline>". Set the subhead to "<your new subhead>". Make the primary CTA "<your new cta>" and remove any competing CTA.
+- the three fixes rewritten as concrete imperative instructions a developer can act on,
+- one guardrail line: Keep the existing brand voice and tech stack.
+Use the exact headline/subhead/CTA you wrote above. Plain text with line breaks, no markdown headings.
+
 Output STRICT JSON only. No markdown fence, no commentary.`;
 
-function userPrompt(f: PageFacts, s: Scores): string {
+function userPrompt(f: PageFacts, s: Scores, opts: WriteRoastOptions = {}): string {
   const facts = {
     url: f.url,
     current_headline: currentHeadline(f),
@@ -67,9 +82,14 @@ function userPrompt(f: PageFacts, s: Scores): string {
     nav_labels: f.navLabels,
     word_count: f.wordCount,
     guessed_audience: s.audience,
+    page_type: opts.isApp ? 'app_or_utility_shell' : 'marketing_landing_page',
     // Measured, not guessed. Roast what is actually here or actually missing.
     lens: lensEvidence(f),
   };
+
+  const appNote = opts.isApp
+    ? `\nIMPORTANT: This page is an APP or UTILITY shell (think google.com's homepage), NOT a marketing landing page. There is no product being pitched and no hero to improve. Make the roast land THAT joke on purpose — mock the fact that there is nothing to sell here, do not pretend it is a broken landing page or invent features. Still return every field, but the reader will see "nothing to fix" rather than a glow-up.\n`
+    : '';
 
   const rubric = SUB_KEYS.map(
     (k) => `- ${SUB_LABELS[k]} ${s.subs[k]}/100 \u2014 ${SUB_BRIEFS[k]}`,
@@ -78,7 +98,7 @@ function userPrompt(f: PageFacts, s: Scores): string {
   const reasonShape = SUB_KEYS.map((k) => `"${k}": "..."`).join(', ');
 
   return `Here is the page, already parsed for you.
-
+${appNote}
 FACTS:
 ${JSON.stringify(facts, null, 1)}
 
@@ -92,7 +112,8 @@ Return exactly this JSON shape:
   "verdict": "one punchy sentence, max 12 words, the headline of the roast",
   "reasons": { ${reasonShape} },
   "glowup": { "headline": "...", "subhead": "...", "cta": "..." },
-  "fixes": ["fix", "fix", "fix"]
+  "fixes": ["fix", "fix", "fix"],
+  "fixPrompt": "context line\\nReplace the hero H1 with ... Set the subhead to ... Make the primary CTA ...\\nthree imperative fixes\\nKeep the existing brand voice and tech stack."
 }
 
 "roast" must be 3 to 5 lines. "fixes" must be exactly 3. Match your tone to the overall score. JSON only.`;
@@ -151,6 +172,21 @@ function line(v: unknown, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1).trimEnd()}\u2026` : s;
 }
 
+/**
+ * Tidy a multi-line block (the fix prompt). Unlike `line`, newlines are kept so
+ * the pasted brief stays readable; only runs of spaces and blank lines collapse.
+ */
+function block(v: unknown, max: number): string {
+  if (typeof v !== 'string') return '';
+  const s = v
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return s.length > max ? `${s.slice(0, max - 1).trimEnd()}\u2026` : s;
+}
+
 /** Validate + coerce the model payload. Throws if the roast is unusable. */
 export function normalizeRoast(parsed: unknown, fallbackReason: string): RoastPayload {
   const p = (parsed ?? {}) as Record<string, unknown>;
@@ -184,10 +220,16 @@ export function normalizeRoast(parsed: unknown, fallbackReason: string): RoastPa
     fixes,
     reasons,
     verdict: line(p.verdict, 90) || roast[0]!,
+    fixPrompt: block(p.fixPrompt, 1200),
   };
 }
 
-export async function writeRoast(facts: PageFacts, scores: Scores, model: string): Promise<RoastPayload> {
+export async function writeRoast(
+  facts: PageFacts,
+  scores: Scores,
+  model: string,
+  opts: WriteRoastOptions = {},
+): Promise<RoastPayload> {
   let lastErr: unknown;
   // One retry at a cooler temperature: JSON slips are the only real failure mode.
   for (const temperature of [0.95, 0.5]) {
@@ -195,7 +237,7 @@ export async function writeRoast(facts: PageFacts, scores: Scores, model: string
       const raw = await chat({
         model,
         system: SYSTEM,
-        user: userPrompt(facts, scores),
+        user: userPrompt(facts, scores, opts),
         maxTokens: 2000,
         temperature,
       });

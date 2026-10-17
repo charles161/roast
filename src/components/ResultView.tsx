@@ -5,6 +5,8 @@ import { quoteWrap, teaser, WORDMARK } from '@/lib/share';
 import { track } from '@/lib/track';
 import type { RoastResult } from '@/lib/types';
 import { RoastAnother, ShareBar } from './ShareBar';
+import { FixPrompt } from './FixPrompt';
+import { appCheekySubhead } from '@/lib/appState';
 import { Mark } from './Logo';
 
 /** Reveal choreography, in ms. One place, so the beats stay in order. */
@@ -194,6 +196,8 @@ export function ResultView({
   onAnother?: () => void;
 }) {
   const glowRef = useRef<HTMLDivElement>(null);
+  // Old cached results predate the field; treat a missing flag as a landing page.
+  const isLanding = r.isLandingPage !== false;
 
   // Fire once when the glow-up (the "magic") actually comes into view.
   useEffect(() => {
@@ -251,26 +255,50 @@ export function ResultView({
         </div>
       </Section>
 
-      <div ref={glowRef}>
-        <Section index="03" title="Same product, better words">
-          <div className="grid gap-4">
-            <Compare label="Headline" before={r.before.headline} after={r.after.headline} />
-            <Compare label="Subhead" before={r.before.subhead} after={r.after.subhead} />
-            <Compare label="CTA" before={r.before.cta} after={r.after.cta} />
+      {isLanding ? (
+        <>
+          <div ref={glowRef}>
+            <Section index="03" title="Same product, better words">
+              <div className="grid gap-4">
+                <Compare label="Headline" before={r.before.headline} after={r.after.headline} />
+                <Compare label="Subhead" before={r.before.subhead} after={r.after.subhead} />
+                <Compare label="CTA" before={r.before.cta} after={r.after.cta} />
+              </div>
+            </Section>
           </div>
-        </Section>
-      </div>
 
-      <Section index="04" title="Ship these three this afternoon">
-        <ol>
-          {r.fixes.map((f, i) => (
-            <li key={i} className="rule flex gap-4 py-4 first:border-t-0 first:pt-0">
-              <span className="label w-6 shrink-0 tabular-nums text-acid">{i + 1}</span>
-              <span className="text-pretty text-body leading-relaxed text-chalk">{f}</span>
-            </li>
-          ))}
-        </ol>
-      </Section>
+          <Section index="04" title="Ship these three this afternoon">
+            <ol>
+              {r.fixes.map((f, i) => (
+                <li key={i} className="rule flex gap-4 py-4 first:border-t-0 first:pt-0">
+                  <span className="label w-6 shrink-0 tabular-nums text-acid">{i + 1}</span>
+                  <span className="text-pretty text-body leading-relaxed text-chalk">{f}</span>
+                </li>
+              ))}
+            </ol>
+          </Section>
+
+          {r.fixPrompt ? (
+            <Section index="05" title="Copy the fix prompt">
+              <FixPrompt fixPrompt={r.fixPrompt} shareUrl={shareUrl} />
+            </Section>
+          ) : null}
+        </>
+      ) : (
+        <div ref={glowRef}>
+          <Section index="03" title="The glow-up">
+            <div className="border border-line p-8 text-center">
+              <p className="text-pretty text-title font-bold tracking-[-0.02em] text-chalk">
+                {appCheekySubhead(r.siteName)}
+              </p>
+              <p className="mx-auto mt-3 max-w-sm text-body leading-relaxed text-mute">
+                It&rsquo;s an app, not a landing page — there&rsquo;s nothing to sell here. The roast
+                above is what we&rsquo;d say if it tried.
+              </p>
+            </div>
+          </Section>
+        </div>
+      )}
 
       {r.degraded ? (
         <p className="mt-10 text-micro text-mute">

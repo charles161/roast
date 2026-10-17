@@ -10,6 +10,9 @@ import { recordShowcase } from './showcase';
 import { hasBudget } from './spend';
 import type { RoastResult } from './types';
 import { displayUrl, siteName } from './url';
+import { detectPageType } from './pageType';
+import { appAfter } from './appState';
+import { buildFixPrompt } from './fixPrompt';
 
 export class ThinPageError extends Error {
   constructor() {
@@ -48,6 +51,10 @@ export async function roastUrl(
   const facts = extractFacts(page.html, page.finalUrl);
   if (!hasEnoughContent(facts)) throw new ThinPageError();
 
+  // App/utility shell (google.com) vs a real marketing landing page. Pure, no
+  // LLM: it decides whether there is anything to glow up at all.
+  const { pageType, isLandingPage } = detectPageType(facts);
+
   // Meter the real USD cost of this scan across both LLM calls.
   const { value, costUsd } = await trackCost(async () => {
     // Jev is cheap and its output is free; fall back to heuristics if it blips
@@ -60,7 +67,7 @@ export async function roastUrl(
       scores = heuristicScores(facts);
       degraded = 'heuristic-scores';
     }
-    const copy = await writeRoast(facts, scores, ROAST_MODEL());
+    const copy = await writeRoast(facts, scores, ROAST_MODEL(), { isApp: !isLandingPage });
     return { scores, copy, degraded };
   });
 
@@ -73,11 +80,24 @@ export async function roastUrl(
     reason: copy.reasons[key],
   }));
 
+  const sName = siteName(normalizedUrl);
+  const dUrl = displayUrl(normalizedUrl);
+
+  // An app shell has nothing to sell: keep the (intentional) roast, but replace
+  // the hallucinated glow-up with the cheeky "nothing to fix" state and emit NO
+  // fix prompt. A real landing page always gets a non-empty fixPrompt — the
+  // model's, or a deterministic fallback built from the glow-up + fixes.
+  const after = isLandingPage ? copy.glowup : appAfter(sName);
+  const fixPrompt = isLandingPage
+    ? copy.fixPrompt ||
+      buildFixPrompt({ siteName: sName, displayUrl: dUrl, after: copy.glowup, fixes: copy.fixes })
+    : undefined;
+
   const result: RoastResult = {
     id,
     url: normalizedUrl,
-    displayUrl: displayUrl(normalizedUrl),
-    siteName: siteName(normalizedUrl),
+    displayUrl: dUrl,
+    siteName: sName,
     favicon: facts.favicon,
     createdAt: Date.now(),
     score: { overall: scores.overall, subs },
@@ -88,8 +108,11 @@ export async function roastUrl(
       subhead: currentSubhead(facts),
       cta: currentCta(facts),
     },
-    after: copy.glowup,
+    after,
     fixes: copy.fixes,
+    pageType,
+    isLandingPage,
+    ...(fixPrompt ? { fixPrompt } : {}),
     ...(degraded ? { degraded } : {}),
   };
 

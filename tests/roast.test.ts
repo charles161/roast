@@ -140,4 +140,16 @@ describe('normalizeRoast', () => {
     const r = normalizeRoast({ ...good, roast: [...good.roast, 42, null, {}] }, 'f');
     expect(r.roast).toHaveLength(3);
   });
+
+  it('captures the model fixPrompt and preserves its line breaks', () => {
+    const fp = 'Context: Acme.\nReplace the hero H1 with "X".\n1. Do a thing.\nKeep the brand voice.';
+    const r = normalizeRoast({ ...good, fixPrompt: fp }, 'f');
+    expect(r.fixPrompt).toContain('Replace the hero H1 with "X".');
+    expect(r.fixPrompt.split('\n').length).toBeGreaterThan(1);
+  });
+
+  it('leaves fixPrompt empty when the model omits it', () => {
+    const r = normalizeRoast(good, 'f');
+    expect(r.fixPrompt).toBe('');
+  });
 });
