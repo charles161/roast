@@ -230,10 +230,16 @@ export function scoringState(f: PageFacts): Record<string, unknown> {
     // Calibration. Without this the model clusters everything in the middle,
     // and a scale whose top nobody reaches is not a scale.
     scoring_guidance:
-      'Judge against the whole web, not an ideal. A page with a clear hero, ' +
-      'plain specific copy, real proof and deliberate craft belongs on the top ' +
-      'rung even if one line could be sharper. Reserve the bottom two rungs for ' +
-      'pages that genuinely fail the rung text. Do not hedge toward the middle.',
+      'Score by matching the page to the RUNG TEXT, worst-to-best, and pick the ' +
+      'highest rung whose description the page actually satisfies. The top rung ' +
+      'describes what the best real pages on the internet do, and the best real ' +
+      'pages genuinely reach it — do not dock a rung for subjective taste or ' +
+      'because a single line could be sharper. If the hero is clear, the copy is ' +
+      'plain and specific, there is real proof, the craft signals are all present ' +
+      'with edited writing, and there is one clear ask, then those dimensions ARE ' +
+      'the top rung — score them there. Reserve the bottom two rungs for pages ' +
+      'that genuinely fail the rung text. Never cluster toward the middle; a scale ' +
+      'whose top no real page reaches is a broken instrument.',
   };
 }
 
