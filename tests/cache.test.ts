@@ -54,19 +54,19 @@ describe('cacheGet / cacheSet', () => {
   it('round-trips a value', async () => {
     const { cacheGet, cacheSet, idForUrl } = await load();
     const id = idForUrl('https://example.com/');
-    cacheSet(id, { hello: 'world' });
-    expect(cacheGet(id)).toEqual({ hello: 'world' });
+    await cacheSet(id, { hello: 'world' });
+    expect(await cacheGet(id)).toEqual({ hello: 'world' });
   });
 
   it('misses on an unknown id', async () => {
     const { cacheGet, idForUrl } = await load();
-    expect(cacheGet(idForUrl('https://nope.com/'))).toBeNull();
+    expect(await cacheGet(idForUrl('https://nope.com/'))).toBeNull();
   });
 
   it('refuses an invalid id instead of touching the filesystem', async () => {
     const { cacheGet, cacheSet } = await load();
-    cacheSet('../../evil', { x: 1 });
-    expect(cacheGet('../../evil')).toBeNull();
+    await cacheSet('../../evil', { x: 1 });
+    expect(await cacheGet('../../evil')).toBeNull();
     expect(fs.existsSync(path.join(dir, 'results'))).toBe(false);
   });
 
@@ -74,24 +74,24 @@ describe('cacheGet / cacheSet', () => {
     const { cacheGet, cacheSet, idForUrl, TTL_MS } = await load();
     const id = idForUrl('https://example.com/');
     const t0 = Date.now();
-    cacheSet(id, { v: 1 }, t0);
-    expect(cacheGet(id, t0 + TTL_MS - 1000)).toEqual({ v: 1 });
-    expect(cacheGet(id, t0 + TTL_MS + 1000)).toBeNull();
+    await cacheSet(id, { v: 1 }, t0);
+    expect(await cacheGet(id, t0 + TTL_MS - 1000)).toEqual({ v: 1 });
+    expect(await cacheGet(id, t0 + TTL_MS + 1000)).toBeNull();
   });
 
   it('persists to disk so a restart still serves the link', async () => {
     const first = await load();
     const id = first.idForUrl('https://example.com/');
-    first.cacheSet(id, { v: 'persisted' });
+    await first.cacheSet(id, { v: 'persisted' });
 
     // A second module instance has an empty memory map: this can only hit disk.
     const second = await load();
-    expect(second.cacheGet(id)).toEqual({ v: 'persisted' });
+    expect(await second.cacheGet(id)).toEqual({ v: 'persisted' });
   });
 
   it('writes the disk entry atomically, leaving no partial files', async () => {
     const { cacheSet, idForUrl } = await load();
-    cacheSet(idForUrl('https://example.com/'), { v: 1 });
+    await cacheSet(idForUrl('https://example.com/'), { v: 1 });
     const files = fs.readdirSync(path.join(dir, 'results'));
     expect(files).toHaveLength(1);
     expect(files[0]).toMatch(/\.json$/);
@@ -101,8 +101,8 @@ describe('cacheGet / cacheSet', () => {
   it('drops an expired entry from disk on read', async () => {
     const { cacheGet, cacheSet, idForUrl, TTL_MS } = await load();
     const id = idForUrl('https://example.com/');
-    cacheSet(id, { v: 1 }, Date.now());
-    cacheGet(id, Date.now() + TTL_MS + 1);
+    await cacheSet(id, { v: 1 }, Date.now());
+    await cacheGet(id, Date.now() + TTL_MS + 1);
     expect(fs.readdirSync(path.join(dir, 'results'))).toHaveLength(0);
   });
 
@@ -111,6 +111,6 @@ describe('cacheGet / cacheSet', () => {
     const id = idForUrl('https://example.com/');
     fs.mkdirSync(path.join(dir, 'results'), { recursive: true });
     fs.writeFileSync(path.join(dir, 'results', `${id}.json`), '{not json');
-    expect(cacheGet(id)).toBeNull();
+    expect(await cacheGet(id)).toBeNull();
   });
 });

@@ -1,13 +1,18 @@
 /**
- * Per-URL result cache: in-memory LRU in front of a small on-disk store.
- * Disk survives restarts so a viral link keeps resolving (and stays
- * consistent for everyone who clicks the same shared card).
+ * Per-URL result cache. Two backends behind one async API:
+ *   - No KV env: in-memory LRU in front of a small on-disk store (UNCHANGED).
+ *     Disk survives restarts so a viral link keeps resolving (and stays
+ *     consistent for everyone who clicks the same shared card).
+ *   - KV env present: in-memory LRU in front of shared Redis, because a
+ *     serverless filesystem is ephemeral and every instance must agree.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { k, kv, kvEnabled } from './kv';
 
 export const TTL_MS = 24 * 60 * 60 * 1000;
+const TTL_SEC = Math.ceil(TTL_MS / 1000);
 const MAX_MEM_ENTRIES = 500;
 const MAX_DISK_ENTRIES = 5000;
 
@@ -26,6 +31,10 @@ export function isValidId(id: string): boolean {
 type Entry<T> = { value: T; expires: number };
 
 const mem = new Map<string, Entry<unknown>>();
+/** KV-mode only: ids this instance has written, so __clearCache can purge them. */
+const kvWritten = new Set<string>();
+
+const kvKey = (id: string) => k(`r:${id}`);
 
 function diskPath(id: string): string {
   return path.join(RESULTS_DIR, `${id}.json`);
@@ -41,18 +50,36 @@ function memSet<T>(id: string, value: T, expires: number): void {
   }
 }
 
-export function cacheGet<T>(id: string, now = Date.now()): T | null {
+/** Shared LRU lookup, in front of both backends. Returns a value or 'miss'. */
+function memGet<T>(id: string, now: number): T | null | 'miss' {
+  const hit = mem.get(id);
+  if (!hit) return 'miss';
+  if (hit.expires > now) {
+    mem.delete(id); // refresh recency
+    mem.set(id, hit);
+    return hit.value as T;
+  }
+  mem.delete(id);
+  return 'miss';
+}
+
+export async function cacheGet<T>(id: string, now = Date.now()): Promise<T | null> {
   if (!isValidId(id)) return null;
 
-  const hit = mem.get(id);
-  if (hit) {
-    if (hit.expires > now) {
-      // Refresh recency.
-      mem.delete(id);
-      mem.set(id, hit);
-      return hit.value as T;
+  const m = memGet<T>(id, now);
+  if (m !== 'miss') return m;
+
+  if (kvEnabled()) {
+    try {
+      const entry = await kv()!.get<Entry<T>>(kvKey(id));
+      if (entry && typeof entry.expires === 'number' && entry.expires > now) {
+        memSet(id, entry.value, entry.expires);
+        return entry.value;
+      }
+    } catch {
+      /* KV blip -> treat as a miss */
     }
-    mem.delete(id);
+    return null;
   }
 
   try {
@@ -68,10 +95,19 @@ export function cacheGet<T>(id: string, now = Date.now()): T | null {
   return null;
 }
 
-export function cacheSet<T>(id: string, value: T, now = Date.now()): void {
+export async function cacheSet<T>(id: string, value: T, now = Date.now()): Promise<void> {
   if (!isValidId(id)) return;
   const expires = now + TTL_MS;
   memSet(id, value, expires);
+
+  if (kvEnabled()) {
+    try {
+      await kv()!.set(kvKey(id), { value, expires }, { ex: TTL_SEC });
+      kvWritten.add(id);
+    } catch { /* mem-only is still correct for this instance */ }
+    return;
+  }
+
   try {
     fs.mkdirSync(RESULTS_DIR, { recursive: true });
     const tmp = `${diskPath(id)}.${process.pid}.tmp`;
@@ -103,7 +139,14 @@ function pruneDisk(): void {
 }
 
 /** Test seam. */
-export function __clearCache(): void {
+export async function __clearCache(): Promise<void> {
   mem.clear();
+  if (kvEnabled()) {
+    try {
+      if (kvWritten.size) await kv()!.del(...[...kvWritten].map(kvKey));
+    } catch { /* ignore */ }
+    kvWritten.clear();
+    return;
+  }
   try { fs.rmSync(RESULTS_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
 }

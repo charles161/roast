@@ -15,7 +15,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
   if (!isValidId(id)) return { title: 'Roast my site' };
 
-  const r = getCached(id);
+  const r = await getCached(id);
   if (!r) return { title: 'Roast my site', robots: { index: false } };
 
   const origin = await originFromRequest();
@@ -47,12 +47,11 @@ export default async function ResultPage({ params }: Props) {
   const { id } = await params;
   if (!isValidId(id)) notFound();
 
-  const n = roastCount();
+  const [n, r] = await Promise.all([roastCount(), getCached(id)]);
   const roasted = n >= MIN_DISPLAY ? n : 0;
 
-  const r = getCached(id);
   // An expired share link should still convert: fall through to the form.
-  if (!r) return <RoastApp roasted={roasted} showcase={showcaseRoast() ?? undefined} />;
+  if (!r) return <RoastApp roasted={roasted} showcase={(await showcaseRoast()) ?? undefined} />;
 
   return <RoastApp initialResult={r} initialUrl={r.displayUrl} roasted={roasted} />;
 }

@@ -1,15 +1,22 @@
 /**
- * How many sites have actually been roasted, read straight off the result
- * cache: one file per distinct site, and the file is gone once its 24h TTL
- * lapses. Never a decorative number — if the disk says nothing, we show
- * nothing.
+ * How many sites have actually been roasted.
+ *   - No KV env: read straight off the result cache dir — one file per distinct
+ *     site, gone once its 24h TTL lapses. Never a decorative number.
+ *   - KV env present: a sorted set `roast:idx` scored by createdAt; count the
+ *     members still inside the TTL window. `recordRoast` adds to it on each new
+ *     result (there is no shared filesystem to count on serverless).
+ * If the backend says nothing, we show nothing.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { TTL_MS } from './cache';
+import { k, kv, kvEnabled } from './kv';
 
 /** Under this it reads as a dead launch, so the UI stays quiet instead. */
 export const MIN_DISPLAY = 25;
+
+const IDX = k('idx');
+const IDX_TTL_SEC = Math.ceil((2 * TTL_MS) / 1000);
 
 const MEMO_MS = 60_000;
 let memo: { at: number; n: number } | null = null;
@@ -19,23 +26,38 @@ function resultsDir(): string {
   return path.join(base, 'results');
 }
 
-/**
- * Counts cache files still inside their TTL. mtime is the write time, so
- * `mtime + TTL` is exactly the entry's expiry — no need to open each file.
- */
-export function roastCount(now = Date.now()): number {
+/** KV mode: record a fresh roast in the index. No-op on the disk path. */
+export async function recordRoast(id: string, createdAt: number): Promise<void> {
+  if (!kvEnabled()) return;
+  const r = kv()!;
+  try {
+    await r.zadd(IDX, { score: createdAt, member: id });
+    await r.expire(IDX, IDX_TTL_SEC);
+  } catch { /* best effort */ }
+}
+
+export async function roastCount(now = Date.now()): Promise<number> {
   if (memo && now - memo.at < MEMO_MS) return memo.n;
 
   let n = 0;
-  try {
-    const dir = resultsDir();
-    for (const f of fs.readdirSync(dir)) {
-      if (!f.endsWith('.json')) continue;
-      try {
-        if (now - fs.statSync(path.join(dir, f)).mtimeMs < TTL_MS) n += 1;
-      } catch { /* vanished mid-scan */ }
-    }
-  } catch { /* cold cache: zero is the honest answer */ }
+  if (kvEnabled()) {
+    try {
+      const r = kv()!;
+      // Prune occasionally, then count what's still inside the window.
+      await r.zremrangebyscore(IDX, 0, now - TTL_MS);
+      n = await r.zcount(IDX, `(${now - TTL_MS}`, '+inf');
+    } catch { n = 0; }
+  } else {
+    try {
+      const dir = resultsDir();
+      for (const f of fs.readdirSync(dir)) {
+        if (!f.endsWith('.json')) continue;
+        try {
+          if (now - fs.statSync(path.join(dir, f)).mtimeMs < TTL_MS) n += 1;
+        } catch { /* vanished mid-scan */ }
+      }
+    } catch { /* cold cache: zero is the honest answer */ }
+  }
 
   memo = { at: now, n };
   return n;

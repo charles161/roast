@@ -28,48 +28,48 @@ afterEach(() => {
 });
 
 describe('roastCount', () => {
-  it('counts one per cached result', () => {
+  it('counts one per cached result', async () => {
     entry('aaaaaaaaaaaa.json', 1000);
     entry('bbbbbbbbbbbb.json', 1000);
-    expect(roastCount()).toBe(2);
+    expect(await roastCount()).toBe(2);
   });
 
-  it('is zero on a cold cache rather than guessing', () => {
-    expect(roastCount()).toBe(0);
+  it('is zero on a cold cache rather than guessing', async () => {
+    expect(await roastCount()).toBe(0);
   });
 
-  it('is zero when the directory does not exist at all', () => {
+  it('is zero when the directory does not exist at all', async () => {
     fs.rmSync(path.join(dir, 'results'), { recursive: true, force: true });
-    expect(roastCount()).toBe(0);
+    expect(await roastCount()).toBe(0);
   });
 
-  it('ignores entries past their TTL', () => {
+  it('ignores entries past their TTL', async () => {
     entry('aaaaaaaaaaaa.json', 1000);
     entry('bbbbbbbbbbbb.json', TTL_MS + 60_000);
-    expect(roastCount()).toBe(1);
+    expect(await roastCount()).toBe(1);
   });
 
-  it('ignores files that are not cache entries', () => {
+  it('ignores files that are not cache entries', async () => {
     entry('aaaaaaaaaaaa.json', 1000);
     entry('notes.txt', 1000);
-    expect(roastCount()).toBe(1);
+    expect(await roastCount()).toBe(1);
   });
 
-  it('memoises for a minute so a traffic blast cannot hammer the disk', () => {
+  it('memoises for a minute so a traffic blast cannot hammer the disk', async () => {
     entry('aaaaaaaaaaaa.json', 1000);
-    expect(roastCount()).toBe(1);
+    expect(await roastCount()).toBe(1);
     entry('bbbbbbbbbbbb.json', 1000);
-    expect(roastCount()).toBe(1); // still the memoised value
+    expect(await roastCount()).toBe(1); // still the memoised value
     __resetCounter();
-    expect(roastCount()).toBe(2);
+    expect(await roastCount()).toBe(2);
   });
 
-  it('re-reads once the memo window has passed', () => {
+  it('re-reads once the memo window has passed', async () => {
     const t0 = Date.now();
     entry('aaaaaaaaaaaa.json', 1000);
-    expect(roastCount(t0)).toBe(1);
+    expect(await roastCount(t0)).toBe(1);
     entry('bbbbbbbbbbbb.json', 1000);
-    expect(roastCount(t0 + 61_000)).toBe(2);
+    expect(await roastCount(t0 + 61_000)).toBe(2);
   });
 });
 

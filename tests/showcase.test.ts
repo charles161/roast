@@ -47,39 +47,39 @@ afterEach(() => {
 });
 
 describe('showcaseRoast', () => {
-  it('returns a real cached roast of a well-known page', () => {
+  it('returns a real cached roast of a well-known page', async () => {
     write('a.json', result());
-    expect(showcaseRoast()?.displayUrl).toBe('stripe.com');
+    expect((await showcaseRoast())?.displayUrl).toBe('stripe.com');
   });
 
-  it('shows nothing rather than inventing something on a cold cache', () => {
-    expect(showcaseRoast()).toBeNull();
+  it('shows nothing rather than inventing something on a cold cache', async () => {
+    expect(await showcaseRoast()).toBeNull();
   });
 
-  it('never surfaces a stranger’s personal site', () => {
+  it('never surfaces a stranger’s personal site', async () => {
     write('a.json', result({ url: 'https://bobs-blog.dev/', displayUrl: 'bobs-blog.dev' }));
-    expect(showcaseRoast()).toBeNull();
+    expect(await showcaseRoast()).toBeNull();
   });
 
-  it('prefers the freshest roast', () => {
+  it('prefers the freshest roast', async () => {
     write('a.json', result({ id: 'aaaaaaaaaaaa', createdAt: 100 }));
     write('b.json', result({ id: 'bbbbbbbbbbbb', displayUrl: 'linear.app', createdAt: 900 }));
-    expect(showcaseRoast()?.id).toBe('bbbbbbbbbbbb');
+    expect((await showcaseRoast())?.id).toBe('bbbbbbbbbbbb');
   });
 
-  it('ignores an entry past its TTL', () => {
+  it('ignores an entry past its TTL', async () => {
     write('a.json', result(), TTL_MS + 60_000);
-    expect(showcaseRoast()).toBeNull();
+    expect(await showcaseRoast()).toBeNull();
   });
 
-  it('skips a malformed entry instead of throwing', () => {
+  it('skips a malformed entry instead of throwing', async () => {
     fs.writeFileSync(path.join(dir, 'results', 'bad.json'), '{not json', 'utf8');
     write('a.json', result());
-    expect(showcaseRoast()?.displayUrl).toBe('stripe.com');
+    expect((await showcaseRoast())?.displayUrl).toBe('stripe.com');
   });
 
-  it('skips a well-known entry that is missing the fields the hero renders', () => {
+  it('skips a well-known entry that is missing the fields the hero renders', async () => {
     write('a.json', { ...result(), verdict: '' });
-    expect(showcaseRoast()).toBeNull();
+    expect(await showcaseRoast()).toBeNull();
   });
 });

@@ -289,7 +289,7 @@ function Card({ r, mark }: { r: RoastResult; mark: string | null }) {
 
 export async function GET(req: Request) {
   const id = new URL(req.url).searchParams.get('id') ?? '';
-  const r = isValidId(id) ? getCached(id) : null;
+  const r = isValidId(id) ? await getCached(id) : null;
 
   if (!r) return new ImageResponse(<Fallback />, imageOpts());
 

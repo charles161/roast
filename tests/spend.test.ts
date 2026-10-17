@@ -38,51 +38,51 @@ describe('dailyCapUsd', () => {
 describe('budget enforcement', () => {
   it('starts with budget available', async () => {
     const { hasBudget, spentToday } = await load();
-    expect(hasBudget()).toBe(true);
-    expect(spentToday().usd).toBe(0);
+    expect(await hasBudget()).toBe(true);
+    expect((await spentToday()).usd).toBe(0);
   });
 
   it('accumulates spend and then refuses', async () => {
     const { hasBudget, recordSpend, spentToday } = await load();
-    recordSpend(0.4);
-    recordSpend(0.4);
-    expect(hasBudget()).toBe(true);
-    recordSpend(0.3);
-    expect(spentToday().usd).toBeCloseTo(1.1, 5);
-    expect(hasBudget()).toBe(false);
+    await recordSpend(0.4);
+    await recordSpend(0.4);
+    expect(await hasBudget()).toBe(true);
+    await recordSpend(0.3);
+    expect((await spentToday()).usd).toBeCloseTo(1.1, 5);
+    expect(await hasBudget()).toBe(false);
   });
 
   it('counts calls', async () => {
     const { recordSpend, spentToday } = await load();
-    recordSpend(0.01);
-    recordSpend(0.01);
-    expect(spentToday().calls).toBe(2);
+    await recordSpend(0.01);
+    await recordSpend(0.01);
+    expect((await spentToday()).calls).toBe(2);
   });
 
   it('ignores junk amounts rather than corrupting the ledger', async () => {
     const { recordSpend, spentToday } = await load();
-    recordSpend(NaN);
-    recordSpend(-10);
-    recordSpend(Infinity);
-    expect(spentToday().usd).toBe(0);
-    expect(spentToday().calls).toBe(3);
+    await recordSpend(NaN);
+    await recordSpend(-10);
+    await recordSpend(Infinity);
+    expect((await spentToday()).usd).toBe(0);
+    expect((await spentToday()).calls).toBe(3);
   });
 
   it('persists across a restart so the cap cannot be reset by bouncing the process', async () => {
     const first = await load();
-    first.recordSpend(0.95);
-    expect(first.hasBudget()).toBe(true);
+    await first.recordSpend(0.95);
+    expect(await first.hasBudget()).toBe(true);
 
     const second = await load();
-    second.recordSpend(0.1);
-    expect(second.hasBudget()).toBe(false);
-    expect(second.spentToday().usd).toBeCloseTo(1.05, 5);
+    await second.recordSpend(0.1);
+    expect(await second.hasBudget()).toBe(false);
+    expect((await second.spentToday()).usd).toBeCloseTo(1.05, 5);
   });
 
   it('starts a fresh budget on a new day', async () => {
     const first = await load();
-    first.recordSpend(5);
-    expect(first.hasBudget()).toBe(false);
+    await first.recordSpend(5);
+    expect(await first.hasBudget()).toBe(false);
 
     // Rewrite the ledger as if it were yesterday's.
     const file = path.join(dir, 'spend.json');
@@ -91,14 +91,14 @@ describe('budget enforcement', () => {
     fs.writeFileSync(file, JSON.stringify(led));
 
     const second = await load();
-    expect(second.hasBudget()).toBe(true);
-    expect(second.spentToday().usd).toBe(0);
+    expect(await second.hasBudget()).toBe(true);
+    expect((await second.spentToday()).usd).toBe(0);
   });
 
   it('survives a corrupt ledger file', async () => {
     fs.writeFileSync(path.join(dir, 'spend.json'), 'not json at all');
     const { hasBudget, spentToday } = await load();
-    expect(hasBudget()).toBe(true);
-    expect(spentToday().usd).toBe(0);
+    expect(await hasBudget()).toBe(true);
+    expect((await spentToday()).usd).toBe(0);
   });
 });

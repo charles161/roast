@@ -4,6 +4,7 @@
  *   - chat()     -> POST {GATEWAY_URL}            (OpenAI-compatible)
  *   - evaluate() -> POST {origin}/v1/evaluate     (typed decision questions)
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { recordSpend } from './spend';
 
 export class GatewayError extends Error {
@@ -11,6 +12,20 @@ export class GatewayError extends Error {
     super(message);
     this.name = 'GatewayError';
   }
+}
+
+/**
+ * Request-scoped cost accumulator. Every gateway call meters its real USD cost
+ * into the active box (if any), so the pipeline can report per-scan cost for
+ * unit economics without threading a return value through score/roast.
+ */
+const costBox = new AsyncLocalStorage<{ usd: number }>();
+
+/** Run `fn`, returning its value plus the total gateway USD cost it incurred. */
+export async function trackCost<T>(fn: () => Promise<T>): Promise<{ value: T; costUsd: number }> {
+  const box = { usd: 0 };
+  const value = await costBox.run(box, fn);
+  return { value, costUsd: box.usd };
 }
 
 function cfg(): { url: string; key: string } {
@@ -25,15 +40,17 @@ function evaluateUrl(chatUrl: string): string {
   return `${u.origin}/v1/evaluate`;
 }
 
-/** Pull the real USD cost the gateway reports and meter it. */
-function meter(payload: unknown): void {
+/** Pull the real USD cost the gateway reports, meter it, and bill the request. */
+async function meter(payload: unknown): Promise<void> {
+  let cost = 0;
   try {
     const gw = (payload as { providerMetadata?: { gateway?: { cost?: string } } })?.providerMetadata?.gateway;
-    const cost = Number(gw?.cost ?? 0);
-    recordSpend(Number.isFinite(cost) ? cost : 0);
-  } catch {
-    recordSpend(0);
-  }
+    const parsed = Number(gw?.cost ?? 0);
+    cost = Number.isFinite(parsed) ? parsed : 0;
+  } catch { cost = 0; }
+  const box = costBox.getStore();
+  if (box && cost > 0) box.usd += cost;
+  await recordSpend(cost);
 }
 
 async function post(url: string, body: unknown, timeoutMs: number): Promise<unknown> {
@@ -56,7 +73,7 @@ async function post(url: string, body: unknown, timeoutMs: number): Promise<unkn
         (json as { error?: { message?: string } })?.error?.message ?? `gateway ${res.status}`;
       throw new GatewayError(msg, res.status);
     }
-    meter(json);
+    await meter(json);
     return json;
   } catch (err) {
     if (ctl.signal.aborted) throw new GatewayError('LLM timed out', 504);

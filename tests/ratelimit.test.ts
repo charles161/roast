@@ -10,59 +10,59 @@ import {
 beforeEach(() => __resetRateLimit());
 
 describe('rateLimit', () => {
-  it('allows requests up to the per-minute limit', () => {
+  it('allows requests up to the per-minute limit', async () => {
     const t = 1_000_000;
     for (let i = 0; i < PER_MINUTE.limit; i++) {
-      expect(rateLimit('ip', [PER_MINUTE], t).ok).toBe(true);
+      expect((await rateLimit('ip', [PER_MINUTE], t)).ok).toBe(true);
     }
   });
 
-  it('blocks the one after the limit', () => {
+  it('blocks the one after the limit', async () => {
     const t = 1_000_000;
-    for (let i = 0; i < PER_MINUTE.limit; i++) rateLimit('ip', [PER_MINUTE], t);
-    const res = rateLimit('ip', [PER_MINUTE], t);
+    for (let i = 0; i < PER_MINUTE.limit; i++) await rateLimit('ip', [PER_MINUTE], t);
+    const res = await rateLimit('ip', [PER_MINUTE], t);
     expect(res.ok).toBe(false);
     expect(res.retryAfterSec).toBeGreaterThan(0);
     expect(res.retryAfterSec).toBeLessThanOrEqual(60);
   });
 
-  it('lets the window slide so the client recovers', () => {
+  it('lets the window slide so the client recovers', async () => {
     const t = 1_000_000;
-    for (let i = 0; i < PER_MINUTE.limit; i++) rateLimit('ip', [PER_MINUTE], t);
-    expect(rateLimit('ip', [PER_MINUTE], t).ok).toBe(false);
-    expect(rateLimit('ip', [PER_MINUTE], t + PER_MINUTE.windowMs + 1).ok).toBe(true);
+    for (let i = 0; i < PER_MINUTE.limit; i++) await rateLimit('ip', [PER_MINUTE], t);
+    expect((await rateLimit('ip', [PER_MINUTE], t)).ok).toBe(false);
+    expect((await rateLimit('ip', [PER_MINUTE], t + PER_MINUTE.windowMs + 1)).ok).toBe(true);
   });
 
-  it('does not record rejected hits, so hammering cannot extend the penalty', () => {
+  it('does not record rejected hits, so hammering cannot extend the penalty', async () => {
     const t = 1_000_000;
-    for (let i = 0; i < PER_MINUTE.limit; i++) rateLimit('ip', [PER_MINUTE], t);
+    for (let i = 0; i < PER_MINUTE.limit; i++) await rateLimit('ip', [PER_MINUTE], t);
     // Hammer while blocked.
-    for (let i = 0; i < 50; i++) rateLimit('ip', [PER_MINUTE], t + 1000);
+    for (let i = 0; i < 50; i++) await rateLimit('ip', [PER_MINUTE], t + 1000);
     // Once the original window passes, the client is clear again.
-    expect(rateLimit('ip', [PER_MINUTE], t + PER_MINUTE.windowMs + 2).ok).toBe(true);
+    expect((await rateLimit('ip', [PER_MINUTE], t + PER_MINUTE.windowMs + 2)).ok).toBe(true);
   });
 
-  it('tracks each key independently', () => {
+  it('tracks each key independently', async () => {
     const t = 1_000_000;
-    for (let i = 0; i < PER_MINUTE.limit; i++) rateLimit('a', [PER_MINUTE], t);
-    expect(rateLimit('a', [PER_MINUTE], t).ok).toBe(false);
-    expect(rateLimit('b', [PER_MINUTE], t).ok).toBe(true);
+    for (let i = 0; i < PER_MINUTE.limit; i++) await rateLimit('a', [PER_MINUTE], t);
+    expect((await rateLimit('a', [PER_MINUTE], t)).ok).toBe(false);
+    expect((await rateLimit('b', [PER_MINUTE], t)).ok).toBe(true);
   });
 
-  it('enforces the hourly cap across several minute windows', () => {
+  it('enforces the hourly cap across several minute windows', async () => {
     let t = 1_000_000;
     let allowed = 0;
     // Spread requests out so the minute rule never trips, only the hour rule.
     for (let i = 0; i < 100; i++) {
-      if (rateLimit('ip', [PER_MINUTE, PER_HOUR], t).ok) allowed++;
+      if ((await rateLimit('ip', [PER_MINUTE, PER_HOUR], t)).ok) allowed++;
       t += 20_000;
     }
     expect(allowed).toBe(PER_HOUR.limit);
   });
 
-  it('reports remaining against the tightest rule', () => {
+  it('reports remaining against the tightest rule', async () => {
     const t = 1_000_000;
-    const first = rateLimit('ip', [PER_MINUTE, PER_HOUR], t);
+    const first = await rateLimit('ip', [PER_MINUTE, PER_HOUR], t);
     expect(first.remaining).toBe(PER_MINUTE.limit - 1);
   });
 });
