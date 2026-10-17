@@ -5,7 +5,8 @@
  */
 import { chat } from './gateway';
 import { currentCta, currentHeadline, currentSubhead, type PageFacts } from './extract';
-import { SUB_LABELS, type Scores, type SubScoreKey } from './score';
+import { SUB_BRIEFS, SUB_KEYS, SUB_LABELS, type Scores, type SubScoreKey } from './score';
+import { lensEvidence } from './lens';
 
 export type RoastPayload = {
   roast: string[];
@@ -15,14 +16,21 @@ export type RoastPayload = {
   verdict: string;
 };
 
-const SYSTEM = `You are the sharpest landing-page critic on the internet: a mix of a world-class copywriter and a stand-up comedian who has read ten thousand startup homepages and is tired of all of them.
+const SYSTEM = `You are the sharpest landing-page critic on the internet: a world-class copywriter crossed with a stand-up comedian who has read ten thousand startup homepages and is tired of every one of them.
+
+YOUR STANCE (this is the lens, not decoration):
+- A landing page is a customer-acquisition channel, not an art project. Every line either earns the next scroll or costs a customer.
+- The five-second test is the whole game: a stranger must be able to say what this is, who it is for, and what they get, before they decide to leave.
+- You are the editor. A sentence that could sit on any other company's homepage was not written, it was generated — and the reader can tell.
+- Specific beats clever. Plain beats impressive. One clear ask beats five.
+- Slop is a craft failure, not a taste preference: stacked buzzwords, a hero that names a category instead of a job, proof that proves nothing, a design that looks generated.
 
 You do two things, both at the highest level:
 
-1) ROAST. You roast the site's MESSAGING. Rules:
+1) ROAST. You roast the site's MESSAGING through that lens. Rules:
 - Be specific. Quote or paraphrase the site's ACTUAL words and make fun of those exact words. A line that could be pasted onto any other website is a failed line.
 - Be funny the way a good comedian is funny: a concrete image, an unexpected comparison, a sharp turn. Not "this is vague" but a joke that SHOWS it is vague.
-- Punch at the copy: buzzwords, vague value props, weak hooks, hedging, missing proof, a CTA nobody would click.
+- Punch at the five dimensions: a hero that fails the five-second test, jargon standing in for meaning, copy that promises what the page never shows, proof that is missing or hollow, a buried or competing call to action, and craft that looks machine-generated.
 - Confident, witty, a little spicy. Never cruel about people. Never about anyone's identity, appearance, race, gender, religion, nationality, or any protected trait. Never profane slurs. Roast the WORDS, never the human.
 - If the page is genuinely good, say so with grudging respect and still find the one weak spot. Do not invent flaws that are not in the facts.
 - Each line stands alone, 8-24 words, no numbering, no emoji, no hashtags.
@@ -34,7 +42,13 @@ You do two things, both at the highest level:
 - Ground every rewrite in what the product ACTUALLY does per the facts. If the facts are thin, write the strongest honest version and do not invent features, customers, or numbers.
 - The three fixes are concrete and doable this afternoon, each naming the specific thing on THIS page to change. 10-20 words each. No generic advice like "improve your copy" or "add social proof" with no specifics.
 
-You also write one short reason per score. Each reason is one line, 6-16 words, specific to this page, and consistent with the number given.
+ACCURACY (this is not negotiable):
+- NEVER invent a flaw for the sake of a punchline. If the lens says the page says what it is, do not write that it never says what it does. If a CTA was found, do not say there is no CTA. If proof was found, do not say there is none. A false critique destroys the only thing that makes this useful.
+- Only call something missing if the FACTS below say it is missing. Everything in "lens" was measured on the real page.
+- Your tone must match the number. A page scoring 90+ gets genuine respect and one real nit, not a demolition. A page in the 30s gets both barrels. Never roast a 90 like a 40, and never go soft on a 30.
+- Quote the page's own words when you can. If you cannot point at the thing you are mocking, cut the line.
+
+You also write one short reason per dimension. Each reason is one line, 6-16 words, cites something actually on THIS page, and is consistent with the number given. A reason that would fit another website is wrong.
 
 Output STRICT JSON only. No markdown fence, no commentary.`;
 
@@ -51,39 +65,37 @@ function userPrompt(f: PageFacts, s: Scores): string {
     hero_copy: f.heroText.slice(0, 700),
     all_cta_labels: f.ctas,
     nav_labels: f.navLabels,
-    buzzwords_found: f.buzzwords,
     word_count: f.wordCount,
     guessed_audience: s.audience,
-    missing: [
-      !f.signals.hasMetaDescription && 'no meta description',
-      !f.signals.hasOgImage && 'no social preview image',
-      !f.signals.hasH1 && 'no H1 headline',
-      !f.signals.hasTestimonial && 'no testimonials',
-      !f.signals.hasLogoWall && 'no customer logos',
-      !f.signals.hasPricing && 'no visible pricing',
-      !f.signals.hasNumbers && 'no concrete numbers',
-      !f.ctas.length && 'no clear call to action',
-    ].filter(Boolean),
+    // Measured, not guessed. Roast what is actually here or actually missing.
+    lens: lensEvidence(f),
   };
+
+  const rubric = SUB_KEYS.map(
+    (k) => `- ${SUB_LABELS[k]} ${s.subs[k]}/100 \u2014 ${SUB_BRIEFS[k]}`,
+  ).join('\n');
+
+  const reasonShape = SUB_KEYS.map((k) => `"${k}": "..."`).join(', ');
 
   return `Here is the page, already parsed for you.
 
 FACTS:
 ${JSON.stringify(facts, null, 1)}
 
-SCORES (already decided; write reasons that justify these exact numbers):
-overall ${s.overall}/100 - ${SUB_LABELS.hook} ${s.subs.hook}/100, ${SUB_LABELS.clarity} ${s.subs.clarity}/100, ${SUB_LABELS.trust} ${s.subs.trust}/100, ${SUB_LABELS.design} ${s.subs.design}/100
+THE LENS (scores already decided; write reasons that justify these exact numbers):
+overall ${s.overall}/100
+${rubric}
 
 Return exactly this JSON shape:
 {
   "roast": ["line", "line", "line", "line"],
   "verdict": "one punchy sentence, max 12 words, the headline of the roast",
-  "reasons": { "hook": "...", "clarity": "...", "trust": "...", "design": "..." },
+  "reasons": { ${reasonShape} },
   "glowup": { "headline": "...", "subhead": "...", "cta": "..." },
   "fixes": ["fix", "fix", "fix"]
 }
 
-"roast" must be 3 to 5 lines. "fixes" must be exactly 3. JSON only.`;
+"roast" must be 3 to 5 lines. "fixes" must be exactly 3. Match your tone to the overall score. JSON only.`;
 }
 
 /** Pull the first JSON object out of a model response, fence or prose tolerant. */
@@ -162,12 +174,9 @@ export function normalizeRoast(parsed: unknown, fallbackReason: string): RoastPa
   if (fixes.length < 3) throw new Error('fixes incomplete');
 
   const r = (p.reasons ?? {}) as Record<string, unknown>;
-  const reasons = {
-    hook: line(r.hook, 110) || fallbackReason,
-    clarity: line(r.clarity, 110) || fallbackReason,
-    trust: line(r.trust, 110) || fallbackReason,
-    design: line(r.design, 110) || fallbackReason,
-  };
+  const reasons = Object.fromEntries(
+    SUB_KEYS.map((k) => [k, line(r[k], 110) || fallbackReason]),
+  ) as Record<SubScoreKey, string>;
 
   return {
     roast,

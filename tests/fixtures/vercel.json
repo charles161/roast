@@ -1,0 +1,46 @@
+{
+  "url": "https://vercel.com/",
+  "title": "Agentic Infrastructure - Vercel",
+  "metaDescription": "The autonomous stack for every app and agent.",
+  "ogTitle": "Agentic Infrastructure - Vercel",
+  "ogDescription": "The autonomous stack for every app and agent.",
+  "ogImage": "https://lishhsx6kmthaacj.public.blob.vercel-storage.com/og-home-not-x.png",
+  "favicon": "https://assets.vercel.com/image/upload/q_auto/front/favicon/vercel/favicon.ico",
+  "h1": "Agentic Infrastructure",
+  "h2s": [
+    "Build agents on infrastructure that thinks like them",
+    "Ship apps that scale from zero to millions instantly",
+    "Host platforms that serve every customer",
+    "Recently shipped",
+    "Built by you, or your agents",
+    "Agent Stack"
+  ],
+  "heroText": "Download Brand Assets Brand Guidelines · Get a Demo Log In Sign Up · <a data-cdp-track=\"{\"event\":\"nav_link_clicked\",\"properties\":{\"href\":\"/about\"}}\" data-zone=\"same\" class=\"cursor-pointer focus-visible:outline-2 outline-[var(--ds-focus-color)] outline-offset-4 flex items-center gap-1 rounded-md px-3 py-1.5 text-lg font-normal text-gray-1000 no-underline outl",
+  "ctas": [
+    "Get a Demo",
+    "Sign Up",
+    "Pricing",
+    "Talk to sales",
+    "Startups"
+  ],
+  "navLabels": [
+    "Deploy now",
+    "Talk to sales"
+  ],
+  "buzzwords": [
+    "platform"
+  ],
+  "wordCount": 523,
+  "signals": {
+    "hasOgImage": true,
+    "hasMetaDescription": true,
+    "hasFavicon": true,
+    "hasH1": true,
+    "hasTestimonial": false,
+    "hasLogoWall": false,
+    "hasPricing": true,
+    "hasNumbers": true,
+    "scriptCount": 72,
+    "imageCount": 16
+  }
+}

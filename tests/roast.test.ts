@@ -8,7 +8,7 @@ const good = {
     'The CTA reads like a polite cough at the end of a meeting.',
   ],
   verdict: 'Gorgeous packaging, no label.',
-  reasons: { hook: 'Names a category, not an outcome.', clarity: 'Jargon hides the product.', trust: 'No proof anywhere.', design: 'Clean but generic.' },
+  reasons: { hero: 'Names a category, not an outcome.', specificity: 'Jargon hides the product.', trust: 'No proof anywhere.', craft: 'Clean but generic.', cta: 'The button says Learn more.' },
   glowup: {
     headline: 'Deploy your app globally in seconds',
     subhead: 'We host frontend apps with automatic scaling and previews on every push.',
@@ -90,8 +90,9 @@ describe('normalizeRoast', () => {
 
   it('fills missing reasons with the fallback', () => {
     const r = normalizeRoast({ ...good, reasons: {} }, 'fallback reason');
-    expect(r.reasons.hook).toBe('fallback reason');
-    expect(r.reasons.design).toBe('fallback reason');
+    expect(r.reasons.hero).toBe('fallback reason');
+    expect(r.reasons.craft).toBe('fallback reason');
+    expect(r.reasons.cta).toBe('fallback reason');
   });
 
   it('falls back to the first roast line when no verdict is given', () => {

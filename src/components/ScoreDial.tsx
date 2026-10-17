@@ -8,14 +8,12 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-// Mirrors the cubic-bezier(.22,1,.36,1) the dial arc sweeps on, so the
-// number and the ring arrive at the same moment.
+/** Mirrors the dial arc's easing curve, so number and ring land together. */
 const easeOut = (t: number) => 1 - (1 - t) ** 5;
 
 /**
- * Counts 0 -> target on the same curve the dial arc sweeps on, so the number
- * and the ring land together. Starts at 0 on the server too, which is the
- * point: the reveal begins from zero whether or not JS has booted yet.
+ * Counts 0 -> target. Starts at 0 on the server too, which is the point: the
+ * reveal begins from zero whether or not JS has booted yet.
  */
 export function useCountUp(target: number, durationMs = 1250, delayMs = 0): number {
   const [n, setN] = useState(0);
@@ -40,37 +38,27 @@ export function useCountUp(target: number, durationMs = 1250, delayMs = 0): numb
   return n;
 }
 
-/** The big number. An SVG arc, so it stays crisp in a screenshot. */
-export function ScoreDial({
-  score,
-  size = 168,
-  label = 'out of 100',
-}: {
-  score: number;
-  size?: number;
-  label?: string;
-}) {
+/**
+ * The score. A thin arc with butt caps — no glow, no rounded ends, nothing
+ * soft. It reads as an instrument, which is what it is.
+ */
+export function ScoreDial({ score, size = 148 }: { score: number; size?: number }) {
   const b = band(score);
   const shown = useCountUp(score);
-  const stroke = size >= 140 ? 13 : 9;
+  const stroke = 4;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const target = c * (1 - Math.max(0, Math.min(100, score)) / 100);
 
   return (
     <div className="relative shrink-0" style={{ width: size, height: size }}>
-      <div
-        className="pointer-events-none absolute inset-[12%] rounded-full"
-        style={{ background: `radial-gradient(circle, ${b.soft}, transparent 68%)` }}
-        aria-hidden
-      />
       <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
         <circle
-          className="dial-track"
           cx={size / 2}
           cy={size / 2}
           r={r}
           fill="none"
+          stroke="var(--color-line)"
           strokeWidth={stroke}
         />
         <circle
@@ -81,35 +69,34 @@ export function ScoreDial({
           fill="none"
           stroke={b.hex}
           strokeWidth={stroke}
-          strokeLinecap="round"
+          strokeLinecap="butt"
           strokeDasharray={c}
           style={
             {
               '--dash-full': `${c}px`,
               '--dash-target': `${target}px`,
               strokeDashoffset: target,
-              filter: `drop-shadow(0 0 ${Math.round(size / 12)}px ${b.soft})`,
             } as React.CSSProperties
           }
         />
       </svg>
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <div
-          className="font-semibold leading-none tracking-tight tabular-nums"
-          style={{ fontSize: size * 0.36, color: b.hex }}
+          className="font-bold leading-none tabular-nums"
+          style={{ fontSize: size * 0.38, color: b.hex, letterSpacing: '-0.04em' }}
           aria-label={`${score} out of 100`}
         >
           {shown}
         </div>
-        <div className="mt-1.5 text-[0.58rem] font-semibold uppercase tracking-[0.2em] text-mute">
-          {label}
+        <div className="label mt-2" style={{ fontSize: Math.max(9, size * 0.068) }}>
+          / 100
         </div>
       </div>
     </div>
   );
 }
 
-/** Horizontal sub-score bar with its one-line reason. */
+/** One rubric line: label, measured bar, number, and the reason underneath. */
 export function SubScoreRow({
   label,
   score,
@@ -124,26 +111,29 @@ export function SubScoreRow({
   const b = band(score);
   const shown = useCountUp(score, 900, delayMs);
   return (
-    <div className="py-3.5">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-sm font-medium text-chalk">{label}</span>
-        <span className="text-sm font-semibold tabular-nums" style={{ color: b.hex }}>
+    <div className="rule py-4 first:border-t-0">
+      <div className="flex items-baseline gap-4">
+        <span className="label w-[6.5rem] shrink-0 text-chalk">{label}</span>
+        <div className="h-[3px] flex-1 bg-line">
+          <div
+            className="bar-grow h-full"
+            style={{
+              width: `${Math.max(2, score)}%`,
+              backgroundColor: b.hex,
+              animationDelay: `${delayMs}ms`,
+            }}
+          />
+        </div>
+        <span
+          className="w-9 shrink-0 text-right text-body font-bold tabular-nums"
+          style={{ color: b.hex }}
+        >
           {shown}
         </span>
       </div>
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/7">
-        <div
-          className="bar-grow h-full rounded-full"
-          style={{
-            width: `${Math.max(2, score)}%`,
-            backgroundColor: b.hex,
-            animationDelay: `${delayMs}ms`,
-          }}
-        />
-      </div>
       <p
-        className="deliver mt-2 text-[0.8rem] leading-relaxed text-mute"
-        style={{ animationDelay: `${delayMs + 180}ms` }}
+        className="cut-in mt-2.5 pl-[7.5rem] text-body leading-relaxed text-mute"
+        style={{ animationDelay: `${delayMs + 160}ms` }}
       >
         {reason}
       </p>

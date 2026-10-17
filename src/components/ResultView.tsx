@@ -3,12 +3,13 @@ import { band, temperature } from '@/lib/grade';
 import { quoteWrap, teaser, WORDMARK } from '@/lib/share';
 import type { RoastResult } from '@/lib/types';
 import { RoastAnother, ShareBar } from './ShareBar';
+import { Mark } from './Logo';
 
 /** Reveal choreography, in ms. One place, so the beats stay in order. */
 const T = {
-  verdict: 220,
-  teaser: 520,
-  subs: 700,
+  verdict: 200,
+  teaser: 500,
+  subs: 680,
   subStep: 90,
   compare: 980,
   share: 1180,
@@ -22,7 +23,7 @@ function delay(ms: number): React.CSSProperties {
 function Favicon({ src, name }: { src: string; name: string }) {
   if (!src) {
     return (
-      <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-white/8 text-sm font-semibold text-mute">
+      <div className="flex size-8 shrink-0 items-center justify-center border border-line text-label text-mute">
         {name.charAt(0)}
       </div>
     );
@@ -34,67 +35,48 @@ function Favicon({ src, name }: { src: string; name: string }) {
     <img
       src={src}
       alt=""
-      width={40}
-      height={40}
+      width={32}
+      height={32}
       loading="lazy"
-      className="size-10 shrink-0 rounded-xl bg-white/8 object-contain p-1"
+      className="size-8 shrink-0 border border-line object-contain p-1"
     />
   );
 }
 
-function Wordmark() {
-  return (
-    <div className="shrink-0 text-right text-[0.62rem] font-semibold tracking-[0.12em] text-mute/80">
-      {WORDMARK}
-    </div>
-  );
-}
-
-/** The screenshot target: everything worth posting, in one framed block. */
+/** The screenshot target: everything worth posting, inside one hard frame. */
 export function ShareCard({ r }: { r: RoastResult }) {
   const b = band(r.score.overall);
   const best = teaser({ ...r, verdict: '' }, 150) || teaser(r, 150);
 
   return (
-    <section
-      id="share-card"
-      className="land relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-ink-900/85 p-5 shadow-[0_30px_90px_-36px_rgba(0,0,0,0.95)] backdrop-blur sm:p-7"
-    >
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-px"
-        style={{ background: `linear-gradient(90deg, transparent, ${b.hex}, transparent)` }}
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute inset-x-0 -top-32 h-64 opacity-80"
-        style={{ background: `radial-gradient(30rem 15rem at 50% 100%, ${b.soft}, transparent 70%)` }}
-        aria-hidden
-      />
+    <section id="share-card" className="cut-in border border-line bg-ink">
+      <div className="h-[3px] w-full" style={{ backgroundColor: b.hex }} aria-hidden />
 
-      <header className="relative flex items-center justify-between gap-3">
+      <header className="rule-0 flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
         <div className="flex min-w-0 items-center gap-3">
           <Favicon src={r.favicon} name={r.siteName} />
           <div className="min-w-0">
-            <div className="truncate text-[0.95rem] font-semibold leading-tight text-chalk">
-              {r.siteName}
-            </div>
-            <div className="truncate text-xs text-mute">{r.displayUrl}</div>
+            <div className="truncate text-body font-bold text-chalk">{r.siteName}</div>
+            <div className="truncate text-micro text-mute">{r.displayUrl}</div>
           </div>
         </div>
-        <Wordmark />
+        <div className="flex shrink-0 items-center gap-2">
+          <Mark size={15} />
+          <span className="text-[0.56rem] tracking-[0.08em] text-mute sm:text-micro">{WORDMARK}</span>
+        </div>
       </header>
 
-      <div className="relative mt-7 flex flex-col items-center gap-6 sm:flex-row sm:items-center sm:gap-8">
-        <ScoreDial score={r.score.overall} size={162} />
+      <div className="flex flex-col items-center gap-6 px-5 py-7 sm:flex-row sm:items-center sm:gap-8">
+        <ScoreDial score={r.score.overall} size={148} />
         <div className="min-w-0 flex-1 text-center sm:text-left">
           <div
-            className="verdict-in text-[0.62rem] font-bold uppercase tracking-[0.22em]"
+            className="wipe-in text-label font-bold"
             style={{ ...delay(T.verdict), color: b.hex }}
           >
             {temperature(r.score.overall)}
           </div>
           <p
-            className="verdict-in mt-2.5 text-balance text-[1.4rem] font-semibold leading-[1.18] tracking-tight text-chalk sm:text-[1.7rem]"
+            className="wipe-in mt-3 text-pretty text-[1.3rem] font-bold leading-[1.22] tracking-[-0.03em] text-chalk sm:text-[1.6rem]"
             style={delay(T.verdict + 90)}
           >
             {r.verdict}
@@ -103,32 +85,31 @@ export function ShareCard({ r }: { r: RoastResult }) {
       </div>
 
       <blockquote
-        className="deliver relative mt-6 border-l-2 pl-4 text-[0.95rem] leading-relaxed text-chalk/85"
-        style={{ ...delay(T.teaser), borderColor: b.hex }}
+        className="cut-in border-t border-line px-5 py-5 text-body leading-relaxed text-chalk/90"
+        style={delay(T.teaser)}
       >
+        <span className="mr-2 select-none font-bold" style={{ color: b.hex }} aria-hidden>
+          &gt;
+        </span>
         {quoteWrap(best)}
       </blockquote>
 
-      <div className="relative mt-6 grid grid-cols-2 gap-x-5 gap-y-4 rounded-2xl border border-white/8 bg-white/[0.025] p-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px border-t border-line bg-line sm:grid-cols-5">
         {r.score.subs.map((s, i) => {
           const sb = band(s.score);
           return (
             <div
               key={s.key}
-              className="deliver min-w-0"
+              className="cut-in bg-ink px-4 py-3.5 last:col-span-2 sm:last:col-span-1"
               style={delay(T.subs + i * T.subStep)}
             >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="truncate text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-mute">
-                  {s.label}
-                </span>
-                <span className="text-base font-semibold tabular-nums" style={{ color: sb.hex }}>
-                  {s.score}
-                </span>
+              <div className="label truncate">{s.label}</div>
+              <div className="mt-1.5 text-title font-bold tabular-nums" style={{ color: sb.hex }}>
+                {s.score}
               </div>
-              <div className="mt-1.5 h-1 w-full overflow-hidden rounded-full bg-white/8">
+              <div className="mt-2 h-[2px] w-full bg-line">
                 <div
-                  className="bar-grow h-full rounded-full"
+                  className="bar-grow h-full"
                   style={{
                     width: `${Math.max(2, s.score)}%`,
                     backgroundColor: sb.hex,
@@ -141,27 +122,19 @@ export function ShareCard({ r }: { r: RoastResult }) {
         })}
       </div>
 
-      <div className="relative mt-5 space-y-2" style={delay(T.compare)}>
-        <div className="deliver rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3" style={delay(T.compare)}>
-          <div className="text-[0.58rem] font-bold uppercase tracking-[0.18em] text-ember">
-            Before
-          </div>
-          <p className="mt-1.5 line-clamp-2 text-[0.85rem] leading-snug text-mute">
+      <div className="border-t border-line">
+        <div className="cut-in flex gap-4 px-5 py-3.5" style={delay(T.compare)}>
+          <span className="label w-14 shrink-0 text-rough">Before</span>
+          <p className="line-clamp-2 min-w-0 text-body leading-snug text-mute">
             {r.before.headline}
           </p>
         </div>
         <div
-          className="deliver rounded-xl border px-4 py-3.5"
-          style={{
-            ...delay(T.compare + 140),
-            borderColor: 'rgba(52,211,153,0.3)',
-            background: 'rgba(52,211,153,0.07)',
-          }}
+          className="cut-in flex gap-4 border-t border-line px-5 py-4"
+          style={delay(T.compare + 140)}
         >
-          <div className="text-[0.58rem] font-bold uppercase tracking-[0.18em] text-mint">
-            After
-          </div>
-          <p className="mt-1.5 text-balance text-[1.02rem] font-semibold leading-snug tracking-tight text-chalk sm:text-[1.12rem]">
+          <span className="label w-14 shrink-0 text-acid">After</span>
+          <p className="min-w-0 text-pretty text-body font-bold leading-snug text-chalk sm:text-[0.95rem]">
             {r.after.headline}
           </p>
         </div>
@@ -172,42 +145,39 @@ export function ShareCard({ r }: { r: RoastResult }) {
 
 function Compare({ label, before, after }: { label: string; before: string; after: string }) {
   return (
-    <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
-      <div className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
-        <div className="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-ember">
-          {label} · before
-        </div>
-        <p className="mt-2 text-sm leading-relaxed text-mute">{before}</p>
+    <div className="border border-line">
+      <div className="flex gap-4 px-4 py-3.5">
+        <span className="label w-20 shrink-0 text-rough">{label}</span>
+        <p className="min-w-0 text-body leading-relaxed text-mute">{before}</p>
       </div>
-      <div
-        className="rounded-xl border p-4"
-        style={{ borderColor: 'rgba(52,211,153,0.28)', background: 'rgba(52,211,153,0.06)' }}
-      >
-        <div className="text-[0.6rem] font-bold uppercase tracking-[0.18em] text-mint">
-          {label} · after
-        </div>
-        <p className="mt-2 text-pretty text-sm font-medium leading-relaxed text-chalk">{after}</p>
+      <div className="flex gap-4 border-t border-line bg-acid/[0.04] px-4 py-3.5">
+        <span className="label w-20 shrink-0 text-acid">{label}</span>
+        <p className="min-w-0 text-pretty text-body font-medium leading-relaxed text-chalk">
+          {after}
+        </p>
       </div>
     </div>
   );
 }
 
 function Section({
-  eyebrow,
+  index,
   title,
   delayMs = 0,
   children,
 }: {
-  eyebrow: string;
+  index: string;
   title: string;
   delayMs?: number;
   children: React.ReactNode;
 }) {
   return (
-    <section className="deliver mt-11" style={delay(delayMs)}>
-      <div className="text-[0.6rem] font-bold uppercase tracking-[0.22em] text-mute">{eyebrow}</div>
-      <h2 className="mt-2 text-xl font-semibold tracking-tight text-chalk sm:text-2xl">{title}</h2>
-      <div className="mt-4">{children}</div>
+    <section className="cut-in mt-14" style={delay(delayMs)}>
+      <div className="flex items-baseline gap-4 border-b border-line pb-3">
+        <span className="label text-acid">{index}</span>
+        <h2 className="text-title font-bold tracking-[-0.02em] text-chalk">{title}</h2>
+      </div>
+      <div className="mt-6">{children}</div>
     </section>
   );
 }
@@ -225,29 +195,29 @@ export function ResultView({
     <div>
       <ShareCard r={r} />
 
-      <div className="deliver" style={delay(T.share)}>
+      <div className="cut-in" style={delay(T.share)}>
         <ShareBar r={r} shareUrl={shareUrl} onAnother={onAnother} />
       </div>
 
-      <Section eyebrow="The roast" title="What your copy is actually saying" delayMs={T.tail}>
-        <ul className="space-y-3">
+      <Section index="01" title="The roast" delayMs={T.tail}>
+        <ul>
           {r.roast.map((lineText, i) => (
             <li
               key={i}
-              className="deliver flex gap-3.5 rounded-xl border border-white/8 bg-white/[0.02] p-4 text-sm leading-relaxed text-chalk"
+              className="cut-in rule flex gap-4 py-4 first:border-t-0 first:pt-0"
               style={delay(T.tail + 120 + i * 130)}
             >
-              <span className="mt-0.5 shrink-0 text-xs font-bold tabular-nums text-ember">
+              <span className="label w-6 shrink-0 tabular-nums text-acid">
                 {String(i + 1).padStart(2, '0')}
               </span>
-              <span className="text-pretty">{lineText}</span>
+              <span className="text-pretty text-body leading-relaxed text-chalk">{lineText}</span>
             </li>
           ))}
         </ul>
       </Section>
 
-      <Section eyebrow="The scorecard" title="Where the points went">
-        <div className="divide-y divide-white/8 rounded-2xl border border-white/8 bg-white/[0.02] px-4 py-1">
+      <Section index="02" title="Where the points went">
+        <div>
           {r.score.subs.map((s, i) => (
             <SubScoreRow
               key={s.key}
@@ -260,47 +230,42 @@ export function ResultView({
         </div>
       </Section>
 
-      <Section eyebrow="The glow-up" title="Same product, better words">
-        <div className="space-y-3">
+      <Section index="03" title="Same product, better words">
+        <div className="grid gap-4">
           <Compare label="Headline" before={r.before.headline} after={r.after.headline} />
           <Compare label="Subhead" before={r.before.subhead} after={r.after.subhead} />
           <Compare label="CTA" before={r.before.cta} after={r.after.cta} />
         </div>
       </Section>
 
-      <Section eyebrow="Do these three things" title="Fixes you can ship this afternoon">
-        <ol className="space-y-2.5">
+      <Section index="04" title="Ship these three this afternoon">
+        <ol>
           {r.fixes.map((f, i) => (
-            <li
-              key={i}
-              className="flex gap-3.5 rounded-xl border border-white/8 bg-white/[0.02] p-4 text-sm leading-relaxed text-chalk"
-            >
-              <span className="grid size-5 shrink-0 place-items-center rounded-full bg-mint/15 text-[0.65rem] font-bold text-mint">
-                {i + 1}
-              </span>
-              <span className="text-pretty">{f}</span>
+            <li key={i} className="rule flex gap-4 py-4 first:border-t-0 first:pt-0">
+              <span className="label w-6 shrink-0 tabular-nums text-acid">{i + 1}</span>
+              <span className="text-pretty text-body leading-relaxed text-chalk">{f}</span>
             </li>
           ))}
         </ol>
       </Section>
 
       {r.degraded ? (
-        <p className="mt-8 text-center text-xs text-mute">
-          Scores came from our fallback rubric on this one — the scoring model was busy.
+        <p className="mt-10 text-micro text-mute">
+          Scores came from the fallback rubric on this one — the scoring model was busy.
         </p>
       ) : null}
 
-      <div className="mt-12 rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
-        <p className="text-balance text-lg font-semibold tracking-tight text-chalk">
+      <div className="mt-16 border border-line p-8 text-center">
+        <p className="text-pretty text-title font-bold tracking-[-0.02em] text-chalk">
           Know a landing page that deserves this?
         </p>
-        <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-mute">
-          Takes about ten seconds. The rewrite is free.
+        <p className="mx-auto mt-3 max-w-sm text-body leading-relaxed text-mute">
+          Ten seconds. The rewrite is free.
         </p>
-        <div className="mt-5 flex justify-center">
+        <div className="mt-6 flex justify-center">
           <RoastAnother
             onAnother={onAnother}
-            className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-ember px-6 py-3.5 text-sm font-semibold text-white transition hover:brightness-110 active:scale-[0.99]"
+            className="inline-flex items-center justify-center gap-2 border border-acid bg-acid px-7 py-3.5 text-label text-ink transition-colors hover:bg-chalk hover:border-chalk"
           >
             Roast another site
           </RoastAnother>

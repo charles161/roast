@@ -21,10 +21,11 @@ function result(over: Partial<RoastResult> = {}): RoastResult {
     score: {
       overall: 59,
       subs: [
-        { key: 'hook', label: 'Hook', score: 41, reason: 'r' },
-        { key: 'clarity', label: 'Clarity', score: 60, reason: 'r' },
-        { key: 'trust', label: 'Trust', score: 63, reason: 'r' },
-        { key: 'design', label: 'Design-signal', score: 81, reason: 'r' },
+        { key: 'hero', label: 'Hero', score: 41, reason: 'r' },
+        { key: 'specificity', label: 'Specifics', score: 60, reason: 'r' },
+        { key: 'trust', label: 'Proof', score: 63, reason: 'r' },
+        { key: 'craft', label: 'Craft', score: 81, reason: 'r' },
+        { key: 'cta', label: 'CTA', score: 55, reason: 'r' },
       ],
     },
     roast: ['First roast line.', 'Second line.'],

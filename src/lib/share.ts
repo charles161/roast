@@ -4,8 +4,11 @@
  */
 import type { RoastResult } from './types';
 
-/** Stamped on every shareable surface so a screenshot carries the brand. */
-export const WORDMARK = 'roast.lightslips.ai';
+/**
+ * Stamped on every shareable surface so a screenshot carries the brand.
+ * Re-exported from the brand module so there is exactly one copy of it.
+ */
+export { WORDMARK } from './brand';
 
 /** X counts any link as 23 characters, whatever its real length. */
 const TCO_LEN = 23;

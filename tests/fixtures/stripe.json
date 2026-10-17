@@ -1,0 +1,47 @@
+{
+  "url": "https://stripe.com/in",
+  "title": "Stripe | Financial Infrastructure to Grow Your Revenue",
+  "metaDescription": "Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models and manage money movement.",
+  "ogTitle": "Stripe | Financial Infrastructure to Grow Your Revenue",
+  "ogDescription": "Stripe is a financial services platform that helps all types of businesses accept payments, build flexible billing models and manage money movement.",
+  "ogImage": "https://b.stripecdn.com/mkt-ssr-statics/assets/_next/static/media/stripe.37119086.jpg",
+  "favicon": "https://images.stripeassets.com/fzn2n1nzq965/1hgcBNd12BfT9VLgbId7By/01d91920114b124fb4cf6d448f9f06eb/favicon.svg",
+  "h1": "Financial infrastructure to grow your revenue. Accept payments, offer financial services and implement custom revenue models – from your first transaction to your billionth.",
+  "h2s": [
+    "Flexible solutions for every business model.",
+    "The backbone of global commerce",
+    "Powering businesses of all sizes.",
+    "Reliable, extensible infrastructure for every stack.",
+    "What's happening"
+  ],
+  "heroText": "See all products Explore our full product catalogue · Global GDP running on Stripe: · Financial infrastructure to grow your revenue. Accept payments, offer financial services and implement custom revenue models – from your first transaction to your billionth. · Financial infrastructure to grow your revenue. Accept payments, offer financial services and implement custom revenue models – from your first transaction to your billionth. · <path fill=\"var(--customerLogoColor, #000)\" fill-rule=\"evenodd\" d=\"M72.553 32.5 60.775 1",
+  "ctas": [
+    "Pricing",
+    "Sign in",
+    "Contact sales",
+    "Startups",
+    "Get support"
+  ],
+  "navLabels": [
+    "Pricing",
+    "Sign in",
+    "Contact sales"
+  ],
+  "buzzwords": [
+    "solutions",
+    "platform"
+  ],
+  "wordCount": 1895,
+  "signals": {
+    "hasOgImage": true,
+    "hasMetaDescription": true,
+    "hasFavicon": true,
+    "hasH1": true,
+    "hasTestimonial": false,
+    "hasLogoWall": true,
+    "hasPricing": true,
+    "hasNumbers": true,
+    "scriptCount": 85,
+    "imageCount": 31
+  }
+}

@@ -40,9 +40,13 @@ Env (`.env.local`, never committed, never sent to the client):
 4. **Extract** (`src/lib/extract.ts`) — deterministic regex parse into a
    structured `PageFacts`. No LLM, so it is free and fast. Everything that
    reaches a model is sanitized and length-capped first.
-5. **Score** (`src/lib/score.ts`) — Jev judges four rubric ladders. Its output
-   tokens are free. Falls back to a deterministic heuristic if Jev is down.
-6. **Write** (`src/lib/roast.ts`) — one Haiku call returns the roast, the
+5. **Lens** (`src/lib/lens.ts`) — deterministic detectors: the five-second
+   test, jargon density, the CTA audit, and the slop markers. Free, and it is
+   what the scorer is handed instead of vibes.
+6. **Score** (`src/lib/score.ts`) — Jev judges five rubric ladders against that
+   evidence. Its output tokens are free. Falls back to the deterministic
+   rubric if Jev is down.
+7. **Write** (`src/lib/roast.ts`) — one Haiku call returns the roast, the
    glow-up and the score reasons as strict JSON.
 
 Result pages live at `/r/<id>` with a server-rendered OG image at
@@ -70,6 +74,40 @@ link preview carry the same thing.
 
 The reveal (dial sweep, count-up, staggered sub-scores and roast lines) runs on
 transform/opacity only and is disabled under `prefers-reduced-motion`.
+
+## The lens
+
+Five weighted dimensions, after Raphael Schaad's landing-page rubric:
+
+| dimension | weight | the question |
+|---|---|---|
+| Hero | 30% | Can a stranger tell what this is, who it is for, and what they get, in five seconds? |
+| Specifics | 20% | Plain words over jargon, and copy that matches what the page shows |
+| Proof | 15% | Named customers, real numbers, visible pricing |
+| Craft | 25% | Does the page read as deliberately made, or generated? |
+| CTA | 10% | One clear ask, in the reader's own words |
+
+The stance, in our words: a landing page is a customer-acquisition channel,
+not an art project; you are the editor, and a line that would fit on any other
+company's homepage was not written, it was generated.
+
+### Calibration
+
+`tests/calibration.test.ts` is the anchor. It scores **captured `PageFacts`
+fixtures** — the real parse of stripe.com, linear.app, vercel.com and
+google.com — and asserts the bands hold: world-class >= 90, an app shell
+10-25, generated slop 30-48. If a change moves those numbers it has changed
+what the product claims, and that should be deliberate.
+
+Two calibration details worth knowing:
+
+- `calibrate()` is the identity up to a knee at 72 and concave above it. Jev
+  returns the *expected* rung index over a distribution, so a page it is sure
+  sits on the top rung comes back near 3.8 of 4. Without the curve the best
+  pages on the internet park around 90 and the top of the scale is dead.
+- The craft ladder is written entirely in terms of what is observable in HTML.
+  An earlier version asked about visual design, which the model cannot see, so
+  nothing could ever reach the top rung.
 
 ### A note on Jev
 
@@ -99,11 +137,13 @@ scores every site near zero.
 ## Tests
 
 ```bash
-npm test        # 244 unit tests
+npm test        # 302 unit tests
 npm run typecheck
 ```
 
 Covers URL normalization, the SSRF guard (IPv4/IPv6 ranges, DNS rebinding,
 redirect hops), score parsing, the cache, the rate limiter, the spend cap, the
-model-output JSON parser, the share-intent builder, the score -> colour bands
-and the cache counter.
+model-output JSON parser, the share-intent builder, the score -> colour bands,
+the cache counter, the lens detectors, the rubric calibration against real
+captured fixtures, and the brand mark (including that `icon.svg` has not
+drifted from `brand.ts`).

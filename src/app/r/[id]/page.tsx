@@ -5,6 +5,7 @@ import { isValidId } from '@/lib/cache';
 import { getCached } from '@/lib/pipeline';
 import { originFromRequest } from '@/lib/baseUrl';
 import { MIN_DISPLAY, roastCount } from '@/lib/counter';
+import { showcaseRoast } from '@/lib/showcase';
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -51,7 +52,7 @@ export default async function ResultPage({ params }: Props) {
 
   const r = getCached(id);
   // An expired share link should still convert: fall through to the form.
-  if (!r) return <RoastApp roasted={roasted} />;
+  if (!r) return <RoastApp roasted={roasted} showcase={showcaseRoast() ?? undefined} />;
 
   return <RoastApp initialResult={r} initialUrl={r.displayUrl} roasted={roasted} />;
 }

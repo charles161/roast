@@ -1,19 +1,31 @@
 @import 'tailwindcss';
 
+/* ───────────────────────────────────────────────────────────────────────────
+   ONE ground, ONE accent, ONE family, five sizes. Everything structural is a
+   1px rule; nothing is rounded; nothing is blurred. A tool that roasts slop
+   is not allowed to look generated.
+   ─────────────────────────────────────────────────────────────────────────── */
+
 @theme {
-  --color-ink-950: #06060a;
-  --color-ink-900: #0b0c11;
-  --color-ink-850: #10121a;
-  --color-ink-800: #161922;
-  --color-ink-700: #22262f;
-  --color-ink-600: #343a46;
-  --color-chalk: #f7f8fa;
-  --color-mute: #9aa1ae;
-  --color-ember: #ff5d47;
-  --color-amber2: #ffb020;
-  --color-lime2: #a3e635;
-  --color-mint: #34d399;
-  --font-display: var(--font-sans-display), ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #0a0a0a;
+  --color-ink-2: #101010;
+  --color-ink-3: #161616;
+  --color-line: #242424;
+  --color-line-2: #333333;
+  --color-chalk: #ededed;
+  --color-mute: #7a7a7a;
+  --color-acid: #ccff3f;
+  --color-rough: #ff4b3e;
+  --color-mid: #ffb020;
+
+  --font-mono: var(--font-jet), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Five sizes. There is no sixth. */
+  --text-display: clamp(2.25rem, 7.4vw, 4rem);
+  --text-title: 1.25rem;
+  --text-body: 0.875rem;
+  --text-label: 0.6875rem;
+  --text-micro: 0.625rem;
 }
 
 html {
@@ -22,104 +34,86 @@ html {
 }
 
 body {
-  background-color: var(--color-ink-950);
+  background-color: var(--color-ink);
   color: var(--color-chalk);
+  font-family: var(--font-mono);
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
 }
 
-/* Ambient glow behind the fold. Pure CSS so first paint costs nothing. */
-.aurora {
+::selection {
+  background: var(--color-acid);
+  color: var(--color-ink);
+}
+
+/* The structural grid: hairlines, never shadows. */
+.rule { border-top: 1px solid var(--color-line); }
+.rule-l { border-left: 1px solid var(--color-line); }
+
+/* A faint measured grid behind the fold. Static — it never follows a cursor. */
+.grid-bg {
   position: fixed;
   inset: 0;
-  pointer-events: none;
   z-index: 0;
-  background:
-    radial-gradient(60rem 30rem at 50% -12%, rgba(255, 93, 71, 0.18), transparent 70%),
-    radial-gradient(40rem 24rem at 10% 6%, rgba(255, 176, 32, 0.09), transparent 70%),
-    radial-gradient(44rem 26rem at 90% 2%, rgba(52, 211, 153, 0.08), transparent 70%);
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.022) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 72%);
 }
 
-.grain {
-  position: fixed;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  opacity: 0.035;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+.label {
+  font-size: var(--text-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-mute);
 }
 
-.dial-track { stroke: rgba(255, 255, 255, 0.08); }
+/* ── MOTION ────────────────────────────────────────────────────────────────
+   ONE orchestrated page-load, staggered by inline animation-delay. Every
+   keyframe is transform/opacity (or stroke-dashoffset, also composited).
+   No scroll-triggered animation, no hover-only reveals, no cursor tracking.
+   ────────────────────────────────────────────────────────────────────────── */
 
-/* ---- The reveal. Every keyframe below touches only transform/opacity (or
-   stroke-dashoffset, which is also composited) so the whole sequence stays at
-   60fps on a mid-range phone. Delays are set inline per item. ---- */
+@keyframes cut-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+.cut-in { animation: cut-in 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+
+@keyframes wipe-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to { opacity: 1; transform: none; }
+}
+.wipe-in { animation: wipe-in 0.44s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 
 @keyframes dial-in {
   from { stroke-dashoffset: var(--dash-full); }
   to { stroke-dashoffset: var(--dash-target); }
 }
-.dial-arc {
-  animation: dial-in 1.25s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
+.dial-arc { animation: dial-in 1.25s cubic-bezier(0.2, 0.85, 0.25, 1) both; }
 
-@keyframes rise {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: none; }
-}
-.rise { animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
-
-/* The card lands rather than fades — the moment the result arrives. */
-@keyframes land {
-  from { opacity: 0; transform: translateY(18px) scale(0.985); }
-  to { opacity: 1; transform: none; }
-}
-.land { animation: land 0.62s cubic-bezier(0.17, 0.84, 0.32, 1) both; }
-
-/* A verdict line should arrive with weight. */
-@keyframes verdict-in {
-  from { opacity: 0; transform: translateY(14px) scale(0.98); }
-  60% { opacity: 1; }
-  to { opacity: 1; transform: none; }
-}
-.verdict-in { animation: verdict-in 0.7s cubic-bezier(0.17, 0.84, 0.32, 1) both; }
-
-/* Roast lines deliver one by one, like a sentence being read out. */
-@keyframes deliver {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: none; }
-}
-.deliver { animation: deliver 0.46s cubic-bezier(0.22, 1, 0.36, 1) both; }
-
-/* Sub-score bars fill with scaleX, never width — width would relayout. */
 @keyframes bar-grow {
   from { transform: scaleX(0); }
   to { transform: scaleX(1); }
 }
 .bar-grow {
   transform-origin: left center;
-  animation: bar-grow 0.85s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: bar-grow 0.8s cubic-bezier(0.2, 0.85, 0.25, 1) both;
 }
 
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-.shimmer {
-  background: linear-gradient(90deg, rgba(255,255,255,0.04) 25%, rgba(255,255,255,0.11) 37%, rgba(255,255,255,0.04) 63%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s linear infinite;
-}
+/* The caret that blinks while the machine is working. */
+@keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+.caret { animation: blink 1s steps(1) infinite; }
 
-/* One slow breath on the loading dial so the wait feels alive. */
-@keyframes pulse-soft {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
+@keyframes scan {
+  from { transform: translateY(0); }
+  to { transform: translateY(100%); }
 }
-.pulse-soft { animation: pulse-soft 1.8s ease-in-out infinite; }
+.scan { animation: scan 1.6s linear infinite; }
 
 @media (prefers-reduced-motion: reduce) {
-  .dial-arc, .rise, .land, .verdict-in, .deliver, .bar-grow, .shimmer, .pulse-soft {
+  .cut-in, .wipe-in, .dial-arc, .bar-grow, .caret, .scan {
     animation: none !important;
   }
   .dial-arc { stroke-dashoffset: var(--dash-target); }

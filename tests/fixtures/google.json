@@ -1,0 +1,34 @@
+{
+  "url": "https://www.google.com/",
+  "title": "Google",
+  "metaDescription": "",
+  "ogTitle": "",
+  "ogDescription": "",
+  "ogImage": "",
+  "favicon": "https://www.gstatic.com/images/branding/searchlogo/ico/favicon.ico",
+  "h1": "",
+  "h2s": [],
+  "heroText": "🍌 Create Remove Create Images Canvas Remove Canvas · Report inappropriate predictions · (function(){function d(a,b){if(a.wfpe&&document.prerendering)document.addEventListener(\"prerenderingchange\",()=>{b(a)},{once:!0,passive:!0});else if(a.wfve&&document.hidden){function c(){document.hidden||(b(a),document.removeEventListener(\"visibilitychange\",c))}document.addEventListener(\"visibilitychange\",c,{passive:!0})}else b(a)} · function e(a){a.ets={};var b=document.getElementById(a.id);if(b=(a.t=b)&&b.dataset.ved)a.url+=`&vet=${`1${b}..i`}`;if(b=(b=document.getElementById(a.trid))&&b.dataset.ved)a.url+=`&ved=${b}`;for(let c of google.ia.rf)c&&c(a);google.ia.r[a.id]=a;google.ia.mi[a.m](a)}google.ia||(google.ia={q:e,r:{},mi:[],rf:[],was:d,dq:[],pf:[],rids:new Set},google.iax&&google.iax());google.dp=!0;}).call(this);(function(){google.cr=google.cr||new Set;}).call(this);(function(){var rids=fals…",
+  "ctas": [
+    "Sign in"
+  ],
+  "navLabels": [
+    "Gmail",
+    "Images",
+    "Sign in"
+  ],
+  "buzzwords": [],
+  "wordCount": 74,
+  "signals": {
+    "hasOgImage": false,
+    "hasMetaDescription": false,
+    "hasFavicon": true,
+    "hasH1": false,
+    "hasTestimonial": false,
+    "hasLogoWall": false,
+    "hasPricing": false,
+    "hasNumbers": false,
+    "scriptCount": 14,
+    "imageCount": 6
+  }
+}

@@ -2,55 +2,51 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ResultView } from './ResultView';
+import { HeroProof } from './HeroProof';
+import { Logo, Mark } from './Logo';
 import { RoastAnother } from './ShareBar';
 import { WORDMARK } from '@/lib/share';
 import type { ApiError, RoastResult } from '@/lib/types';
 
 const LOADING_LINES = [
-  'Reading your site…',
-  'Counting the buzzwords…',
-  'Judging your life choices…',
-  'Consulting the brutal honesty department…',
-  'Writing something mean but fair…',
-  'Rewriting it properly…',
+  'fetching the page',
+  'reading the hero',
+  'running the five-second test',
+  'counting the jargon',
+  'judging your life choices',
+  'consulting the brutal honesty department',
+  'writing the rewrite',
 ];
 
 const EXAMPLES = ['stripe.com', 'linear.app', 'vercel.com', 'notion.so'];
 
+/** A terminal log, not a spinner. The wait is part of the voice. */
 function Loading() {
-  const [i, setI] = useState(0);
+  const [n, setN] = useState(1);
   useEffect(() => {
-    const t = setInterval(() => setI((n) => (n + 1 < LOADING_LINES.length ? n + 1 : n)), 1800);
+    const t = setInterval(() => setN((i) => Math.min(LOADING_LINES.length, i + 1)), 1500);
     return () => clearInterval(t);
   }, []);
 
   return (
-    <div className="rise mt-10" aria-live="polite" aria-busy="true">
-      <div className="rounded-[1.75rem] border border-white/10 bg-ink-900/70 p-5 sm:p-7">
-        <div className="flex items-center gap-4">
-          <div className="pulse-soft relative size-[150px] shrink-0">
-            <div className="absolute inset-0 rounded-full border-[13px] border-white/[0.07]" />
-            <div
-              className="absolute inset-0 rounded-full border-[13px] border-transparent"
-              style={{ borderTopColor: 'rgba(255,93,71,0.55)' }}
-            />
-          </div>
-          <div className="min-w-0 flex-1 space-y-3">
-            <div className="shimmer h-3 w-24 rounded" />
-            <div className="shimmer h-7 w-full rounded" />
-            <div className="shimmer h-7 w-4/5 rounded" />
-            <div className="shimmer h-3 w-2/3 rounded" />
-          </div>
-        </div>
-        <div className="mt-7 grid grid-cols-4 gap-3">
-          {[0, 1, 2, 3].map((n) => (
-            <div key={n} className="shimmer h-14 rounded-xl" />
-          ))}
-        </div>
+    <div className="mt-10 border border-line" aria-live="polite" aria-busy="true">
+      <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
+        <span className="label text-acid">Running</span>
+        <span className="label">the lens</span>
       </div>
-      <p className="mt-5 text-center text-sm text-mute" role="status">
-        {LOADING_LINES[i]}
-      </p>
+      <div className="px-4 py-5">
+        {LOADING_LINES.slice(0, n).map((l, i) => (
+          <div key={l} className="cut-in flex gap-3 py-1 text-body text-mute">
+            <span className="select-none text-acid" aria-hidden>
+              &gt;
+            </span>
+            <span className={i === n - 1 ? 'text-chalk' : undefined}>
+              {l}
+              {i === n - 1 ? <span className="caret ml-1 text-acid">&#9608;</span> : null}
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -59,11 +55,14 @@ export function RoastApp({
   initialResult,
   initialUrl,
   roasted = 0,
+  showcase,
 }: {
   initialResult?: RoastResult;
   initialUrl?: string;
-  /** Real count of sites currently in the result cache; 0 means "don't show". */
+  /** Real count of sites in the result cache; 0 means "don't show". */
   roasted?: number;
+  /** A real cached roast to show as proof, or undefined. */
+  showcase?: RoastResult;
 }) {
   const [url, setUrl] = useState(initialUrl ?? '');
   const [result, setResult] = useState<RoastResult | null>(initialResult ?? null);
@@ -81,8 +80,9 @@ export function RoastApp({
     setError(null);
     setResult(null);
     setArrived(false);
-    // Bring the skeleton into view, so the wait is something to watch.
-    requestAnimationFrame(() => loadingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    requestAnimationFrame(() =>
+      loadingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+    );
     try {
       const res = await fetch('/api/roast', {
         method: 'POST',
@@ -98,7 +98,9 @@ export function RoastApp({
       setResult(r);
       // Put the shareable id in the URL without a reload, so the link is copyable.
       window.history.replaceState(null, '', `/r/${r.id}`);
-      requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+      requestAnimationFrame(() =>
+        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      );
     } catch {
       setError('Network hiccup. Try that again.');
     } finally {
@@ -124,27 +126,23 @@ export function RoastApp({
     : '';
 
   const idle = !result && !loading;
-  // Someone who clicked a shared card came to see that card. Put it first and
-  // keep the pitch to a single line, or the whole reveal plays off-screen.
+  // Someone who clicked a shared card came to see that card. Put it first, or
+  // the whole reveal plays off-screen.
   const shared = arrived && result !== null;
 
   if (shared && result) {
     return (
-      <main className="mx-auto w-full max-w-2xl px-4 pb-24 pt-6">
-        <div className="flex items-center justify-between gap-3">
-          <a
-            href="/"
-            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[0.62rem] font-bold uppercase tracking-[0.18em] text-mute transition hover:text-chalk"
-          >
-            <span className="size-1.5 rounded-full bg-ember" aria-hidden />
-            Roast · Score · Glow-up
-          </a>
+      <main className="mx-auto w-full max-w-3xl px-5 pb-28 pt-6">
+        <nav className="flex items-center justify-between gap-4 border-b border-line pb-5">
+          <Logo size={20} href="/" />
           <RoastAnother
             onAnother={another}
-            className="rounded-full border border-ember/40 bg-ember/10 px-3.5 py-1.5 text-xs font-semibold text-ember transition hover:bg-ember/20"
-          />
-        </div>
-        <div className="mt-5">
+            className="border border-acid px-4 py-2 text-label text-acid transition-colors hover:bg-acid hover:text-ink"
+          >
+            Roast yours
+          </RoastAnother>
+        </nav>
+        <div className="mt-8">
           <ResultView r={result} shareUrl={shareUrl} onAnother={another} />
         </div>
       </main>
@@ -152,21 +150,29 @@ export function RoastApp({
   }
 
   return (
-    <main className="mx-auto w-full max-w-2xl px-4 pb-24 pt-12 sm:pt-16">
-      <header className="text-center">
-        <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-[0.65rem] font-bold uppercase tracking-[0.18em] text-mute">
-          Roast · Score · Glow-up
-        </div>
-        <h1 className="mt-5 text-balance text-[2.6rem] font-semibold leading-[1.02] tracking-[-0.03em] sm:text-6xl">
-          Your landing page is{' '}
-          <span className="bg-gradient-to-r from-ember via-amber2 to-ember bg-clip-text text-transparent">
-            probably lying
-          </span>{' '}
-          to you.
+    <main className="mx-auto w-full max-w-3xl px-5 pb-28 pt-6">
+      <nav className="flex items-center justify-between gap-4 border-b border-line pb-5">
+        <Logo size={20} href="/" />
+        {roasted > 0 ? (
+          <span className="text-micro text-mute">
+            <span className="font-bold tabular-nums text-chalk">
+              {roasted.toLocaleString('en-US')}
+            </span>{' '}
+            pages roasted / 24h
+          </span>
+        ) : null}
+      </nav>
+
+      <header className="pt-16 sm:pt-24">
+        <h1 className="cut-in max-w-[20ch] text-pretty text-display font-bold leading-[0.98] tracking-[-0.045em]">
+          Your landing page is probably <span className="text-acid">lying</span> to you.
         </h1>
-        <p className="mx-auto mt-5 max-w-md text-pretty text-[0.98rem] leading-relaxed text-mute">
-          Paste your URL. Get a sharp, specific roast of your messaging, a score out of 100, and a
-          rewritten headline that is actually better.
+        <p
+          className="cut-in mt-7 max-w-[56ch] text-pretty text-body leading-relaxed text-mute"
+          style={{ animationDelay: '90ms' }}
+        >
+          Paste a URL. Founders and developers get a brutal roast of their landing page, a score out
+          of 100, and the rewritten headline. Free, no account.
         </p>
       </header>
 
@@ -175,12 +181,13 @@ export function RoastApp({
           e.preventDefault();
           void run(url);
         }}
-        className="mt-8"
+        className="cut-in mt-10"
+        style={{ animationDelay: '180ms' }}
       >
-        <div className="flex flex-col gap-2.5 sm:flex-row">
-          <div className="relative flex-1">
-            <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-sm text-mute">
-              https://
+        <div className="flex flex-col gap-px border border-line bg-line sm:flex-row">
+          <div className="relative flex flex-1 items-center bg-ink">
+            <span className="select-none pl-4 pr-1 text-body text-acid" aria-hidden>
+              &gt;
             </span>
             <input
               ref={inputRef}
@@ -194,21 +201,24 @@ export function RoastApp({
               enterKeyHint="go"
               aria-label="Your website URL"
               placeholder="yoursite.com"
-              className="w-full rounded-xl border border-white/12 bg-white/[0.04] py-4 pl-[4.7rem] pr-4 text-[0.95rem] text-chalk outline-none transition placeholder:text-mute/60 focus:border-ember/50 focus:bg-white/[0.06] focus:ring-2 focus:ring-ember/20"
+              className="w-full border border-transparent bg-transparent py-4 pr-4 text-body text-chalk outline-none placeholder:text-mute/60 focus:outline-none"
             />
           </div>
           <button
             type="submit"
             disabled={loading || !url.trim()}
-            className="rounded-xl bg-ember px-7 py-4 text-[0.95rem] font-semibold text-white transition hover:brightness-110 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-45"
+            className="border border-acid bg-acid px-8 py-4 text-label text-ink transition-colors hover:border-chalk hover:bg-chalk disabled:cursor-not-allowed disabled:bg-transparent disabled:text-acid/70"
           >
-            {loading ? 'Judging…' : 'Roast it'}
+            {loading ? 'Judging…' : 'Roast my site'}
           </button>
         </div>
       </form>
 
-      <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2 text-xs text-mute">
-        <span>Try</span>
+      <div
+        className="cut-in mt-4 flex flex-wrap items-center gap-2 text-micro text-mute"
+        style={{ animationDelay: '260ms' }}
+      >
+        <span className="label">Try</span>
         {EXAMPLES.map((e) => (
           <button
             key={e}
@@ -217,25 +227,23 @@ export function RoastApp({
               setUrl(e);
               void run(e);
             }}
-            className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 font-medium text-chalk/80 transition hover:border-white/20 hover:text-chalk"
+            className="border border-line px-2.5 py-1 text-chalk/80 transition-colors hover:border-acid hover:text-acid"
           >
             {e}
           </button>
         ))}
+        {showcase ? (
+          <a href="#example" className="ml-auto text-micro text-mute transition-colors hover:text-acid">
+            See a real roast &rarr;
+          </a>
+        ) : null}
       </div>
 
-      {idle && roasted > 0 ? (
-        <p className="mt-6 text-center text-xs text-mute">
-          <span className="font-semibold tabular-nums text-chalk">{roasted.toLocaleString('en-US')}</span>{' '}
-          sites roasted in the last 24 hours.
-        </p>
-      ) : null}
-
       {error ? (
-        <div
-          role="alert"
-          className="rise mt-7 rounded-xl border border-ember/30 bg-ember/[0.08] p-4 text-sm leading-relaxed text-chalk"
-        >
+        <div role="alert" className="cut-in mt-8 border border-rough px-4 py-3.5 text-body text-chalk">
+          <span className="mr-2 select-none font-bold text-rough" aria-hidden>
+            !
+          </span>
           {error}
         </div>
       ) : null}
@@ -244,16 +252,49 @@ export function RoastApp({
 
       <div ref={resultRef} className="scroll-mt-6">
         {!loading && result ? (
-          <div className="mt-10">
+          <div className="mt-12">
             <ResultView r={result} shareUrl={shareUrl} onAnother={another} />
           </div>
         ) : null}
       </div>
 
+      {idle && showcase ? (
+        <div className="mt-20 scroll-mt-6" id="example">
+          <HeroProof r={showcase} />
+        </div>
+      ) : null}
+
       {idle ? (
-        <footer className="mt-16 text-center text-xs leading-relaxed text-mute/70">
-          <p>We read the public HTML of the page you paste. Nothing is stored except the result, for a day.</p>
-          <p className="mt-2 font-semibold tracking-[0.1em] text-mute/60">{WORDMARK}</p>
+        <section className="cut-in mt-20 border-t border-line pt-8" style={{ animationDelay: '620ms' }}>
+          <h2 className="label text-chalk">What we actually measure</h2>
+          <p className="mt-3 max-w-[60ch] text-body leading-relaxed text-mute">
+            Hero, specifics, proof, craft, CTA — weighted, and the same every time, so two
+            pages are actually comparable.
+          </p>
+          <dl className="mt-6 grid gap-px bg-line sm:grid-cols-2">
+            {[
+              ['Hero', 'Can a stranger tell what this is, who it is for, and what they get — in five seconds?'],
+              ['Specifics', 'Plain words over jargon, and copy that matches what the page actually shows.'],
+              ['Proof', 'Named customers, real numbers, visible pricing. Claims without evidence score zero.'],
+              ['Craft', 'Does the page look deliberately made, or generated?'],
+              ['CTA', 'One clear ask, in the reader’s own words.'],
+            ].map(([k, v]) => (
+              <div key={k} className="bg-ink px-4 py-4">
+                <dt className="label text-acid">{k}</dt>
+                <dd className="mt-2 text-body leading-relaxed text-mute">{v}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      ) : null}
+
+      {idle ? (
+        <footer className="mt-20 flex items-center justify-between gap-4 border-t border-line pt-6 text-micro text-mute">
+          <span className="flex items-center gap-2">
+            <Mark size={13} />
+            {WORDMARK}
+          </span>
+          <span className="text-right">We read the public HTML. Results are kept for a day.</span>
         </footer>
       ) : null}
     </main>
