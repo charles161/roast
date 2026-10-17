@@ -54,7 +54,8 @@ function evaluateUrl(chatUrl: string): string {
  * substring; refine if a published price changes.
  */
 const FALLBACK_PRICE_PER_M: Record<string, { in: number; out: number }> = {
-  haiku: { in: 0.1, out: 0.5 }, // anthropic/claude-haiku-5.5
+  haiku: { in: 0.1, out: 0.5 }, // anthropic/claude-haiku-5.5 (<=100k tokens)
+  jev: { in: 0.042, out: 0 }, // typesafe-ai/jev-1.14.0 — eval output is free
 };
 
 /** Estimate a call's cost from token usage when the gateway doesn't report one. */
