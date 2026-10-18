@@ -132,7 +132,7 @@ export function SubScoreRow({
         </span>
       </div>
       <p
-        className="cut-in mt-2.5 pl-[7.5rem] text-body leading-relaxed text-mute"
+        className="cut-in mt-2.5 pl-[7.5rem] font-sans text-body leading-relaxed text-prose"
         style={{ animationDelay: `${delayMs + 160}ms` }}
       >
         {reason}

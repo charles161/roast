@@ -1,14 +1,25 @@
 import type { Metadata, Viewport } from 'next';
-import { JetBrains_Mono } from 'next/font/google';
+import { JetBrains_Mono, Inter } from 'next/font/google';
 import './globals.css';
 import { PostHogProvider } from '@/components/PostHogProvider';
 
-// One family, used decisively. The whole interface is set in it.
+// Mono is still the interface: the wordmark, the giant headline, every label,
+// score, and the `>` input are set in it.
 const jet = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-jet',
   display: 'swap',
   weight: ['400', '500', '700'],
+});
+
+// Inter carries the paragraph copy — the lede, chip labels, rubric descriptions,
+// and the longer roast prose — where mono's rhythm tires the eye. Self-hosted by
+// next/font (no runtime fetch to Google), exactly like the mono above.
+const inter = Inter({
+  subsets: ['latin'],
+  variable: '--font-inter',
+  display: 'swap',
+  weight: ['400', '500', '600'],
 });
 
 const BASE = process.env.PUBLIC_BASE_URL || 'http://127.0.0.1:3042';
@@ -48,7 +59,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={jet.variable}>
+    <html lang="en" className={`${jet.variable} ${inter.variable}`}>
       <body className="min-h-dvh font-mono antialiased">
         <PostHogProvider>
           <div className="grid-bg" aria-hidden />

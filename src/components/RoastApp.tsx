@@ -4,9 +4,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ResultView } from './ResultView';
 import { HeroProof } from './HeroProof';
 import { Logo, Mark } from './Logo';
+import { LensScan } from './LensScan';
 import { RoastAnother } from './ShareBar';
 import { WORDMARK } from '@/lib/share';
 import { getRecent, pushRecent, type RecentEntry } from '@/lib/history';
+import { lensModeForLoading } from '@/lib/scanEngine';
 import { track } from '@/lib/track';
 import type { ApiError, RoastResult } from '@/lib/types';
 
@@ -21,6 +23,15 @@ const LOADING_LINES = [
 ];
 
 const EXAMPLES = ['stripe.com', 'linear.app', 'vercel.com', 'notion.so'];
+
+/** The rubric, in the mockup's order. The same five criteria the lens scores on. */
+const RUBRIC: Array<[string, string, string]> = [
+  ['01', 'Hero', 'Can a stranger tell what this is, who it is for, and what they get — in five seconds?'],
+  ['02', 'Specifics', 'Plain words over jargon, and copy that matches what the page actually shows.'],
+  ['03', 'Proof', 'Named customers, real numbers, visible pricing. Claims without evidence score zero.'],
+  ['04', 'Craft', 'Does the page look deliberately made, or generated?'],
+  ['05', 'CTA', 'One clear ask, in the reader’s own words.'],
+];
 
 /** POST body for /api/roast. `fresh` is only ever sent when true, so the default body is unchanged. */
 export function roastRequestBody(url: string, fresh = false): string {
@@ -96,7 +107,7 @@ function Loading() {
             <span className="select-none text-acid" aria-hidden>
               &gt;
             </span>
-            <span className={i === n - 1 ? 'text-chalk' : undefined}>
+            <span className={`font-sans${i === n - 1 ? ' text-chalk' : ''}`}>
               {l}
               {i === n - 1 ? <span className="caret ml-1 text-acid">&#9608;</span> : null}
             </span>
@@ -246,6 +257,9 @@ export function RoastApp({
     : '';
 
   const idle = !result && !loading;
+  // The hero scan idles (ambient) and switches to the scanning visual while a
+  // roast is in flight. Desktop-only; the component itself no-ops below 1024px.
+  const lensMode = lensModeForLoading(loading);
   // Someone who clicked a shared card came to see that card. Put it first, or
   // the whole reveal plays off-screen.
   const shared = arrived && result !== null;
@@ -271,8 +285,9 @@ export function RoastApp({
   }
 
   return (
-    <main className="mx-auto w-full max-w-3xl px-5 pb-28 pt-6">
-      <nav className="flex items-center justify-between gap-4 border-b border-line pb-5">
+    <>
+      {/* Full-bleed hairline nav, aligned to the hero's left edge. */}
+      <header className="flex items-center justify-between gap-4 border-b border-line px-5 py-4 lg:px-10 xl:px-20">
         <Logo size={20} href="/" />
         {roasted > 0 ? (
           <span className="text-micro text-mute">
@@ -282,187 +297,219 @@ export function RoastApp({
             pages roasted / 24h
           </span>
         ) : null}
-      </nav>
-
-      {expiredOpen ? (
-        <div
-          role="status"
-          className="cut-in mt-6 flex items-start gap-3 border border-acid px-4 py-3.5 text-body text-chalk"
-        >
-          <span className="select-none font-bold text-acid" aria-hidden>
-            !
-          </span>
-          <p className="flex-1">
-            That roast has expired &mdash; roast any site below for a fresh link.
-          </p>
-          <button
-            type="button"
-            onClick={() => setExpiredOpen(false)}
-            aria-label="Dismiss notice"
-            className="-my-1.5 -mr-2 select-none px-2.5 py-1 text-title leading-none text-mute transition-colors hover:text-acid"
-          >
-            &times;
-          </button>
-        </div>
-      ) : null}
-
-      <header className="pt-16 sm:pt-24">
-        <h1 className="cut-in max-w-[20ch] text-pretty text-display font-bold leading-[0.98] tracking-[-0.045em]">
-          Your landing page is probably <span className="text-acid">lying</span> to you.
-        </h1>
-        <p
-          className="cut-in mt-7 max-w-[56ch] text-pretty text-body leading-relaxed text-mute"
-          style={{ animationDelay: '90ms' }}
-        >
-          Paste a URL. Founders and developers get a brutal roast of their landing page, a score out
-          of 100, and the rewritten headline. Free, no account.
-        </p>
       </header>
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void run(url);
-        }}
-        className="cut-in mt-10"
-        style={{ animationDelay: '180ms' }}
-      >
-        <div className="flex flex-col gap-px border border-line bg-line sm:flex-row">
-          <div className="relative flex flex-1 items-center bg-ink">
-            <span className="select-none pl-4 pr-1 text-body text-acid" aria-hidden>
-              &gt;
-            </span>
-            <input
-              ref={inputRef}
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              type="text"
-              inputMode="url"
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              enterKeyHint="go"
-              aria-label="Your website URL"
-              placeholder="yoursite.com"
-              className="w-full border border-transparent bg-transparent py-4 pr-4 text-body text-chalk outline-none placeholder:text-mute/60 focus:outline-none"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading || !url.trim()}
-            className="border border-acid bg-acid px-8 py-4 text-label text-ink transition-colors hover:border-chalk hover:bg-chalk disabled:cursor-not-allowed disabled:bg-transparent disabled:text-acid/70"
-          >
-            {loading ? 'Judging…' : 'Roast my site'}
-          </button>
-        </div>
-      </form>
+      <main>
+        {/* HERO — copy on the left, the generative scan filling the right half on
+            desktop. Below 1024px the lens cell is hidden and the engine never
+            mounts; the column collapses to the single-column hero of today. */}
+        <section className="lg:grid lg:grid-cols-[minmax(0,1fr)_420px] xl:grid-cols-[minmax(0,1fr)_560px] 2xl:grid-cols-[minmax(0,1fr)_640px]">
+          <div className="px-5 lg:pl-10 lg:pr-14 xl:pl-20">
+            <div className="mx-auto w-full max-w-3xl pb-14 pt-10 lg:mx-0 lg:max-w-[40rem] lg:py-16">
+              {expiredOpen ? (
+                <div
+                  role="status"
+                  className="cut-in mb-8 flex items-start gap-3 border border-acid px-4 py-3.5 text-body text-chalk"
+                >
+                  <span className="select-none font-bold text-acid" aria-hidden>
+                    !
+                  </span>
+                  <p className="flex-1 font-sans">
+                    That roast has expired &mdash; roast any site below for a fresh link.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setExpiredOpen(false)}
+                    aria-label="Dismiss notice"
+                    className="-my-1.5 -mr-2 select-none px-2.5 py-1 text-title leading-none text-mute transition-colors hover:text-acid"
+                  >
+                    &times;
+                  </button>
+                </div>
+              ) : null}
 
-      <div
-        className="cut-in mt-4 flex flex-wrap items-center gap-2 text-micro text-mute"
-        style={{ animationDelay: '260ms' }}
-      >
-        <span className="label">Try</span>
-        {EXAMPLES.map((e) => (
-          <button
-            key={e}
-            type="button"
-            onClick={() => {
-              setUrl(e);
-              void run(e);
-            }}
-            className="border border-line px-2.5 py-1 text-chalk/80 transition-colors hover:border-acid hover:text-acid"
-          >
-            {e}
-          </button>
-        ))}
-        {showcase ? (
-          <a href="#example" className="ml-auto text-micro text-mute transition-colors hover:text-acid">
-            See a real roast &rarr;
-          </a>
-        ) : null}
-      </div>
-
-      {idle && recent.length > 0 ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-micro text-mute">
-          <span className="label">Recent</span>
-          {recent.map((e) => (
-            <a
-              key={e.id}
-              href={`/r/${e.id}`}
-              onClick={() => track('recent_clicked', { id: e.id })}
-              className="flex items-center gap-1.5 border border-line px-2.5 py-1 text-chalk/80 transition-colors hover:border-acid hover:text-acid"
-            >
-              <span className="max-w-[14ch] truncate">{e.displayUrl}</span>
-              <span className="tabular-nums text-mute">{e.score}</span>
-            </a>
-          ))}
-        </div>
-      ) : null}
-
-      {error ? (
-        <div role="alert" className="cut-in mt-8 border border-rough px-4 py-3.5 text-body text-chalk">
-          <span className="mr-2 select-none font-bold text-rough" aria-hidden>
-            !
-          </span>
-          {error}
-        </div>
-      ) : null}
-
-      <div ref={loadingRef}>{loading ? <Loading /> : null}</div>
-
-      <div>
-        {!loading && result ? (
-          <div className="mt-12">
-            <ResultStage
-              r={result}
-              shareUrl={shareUrl}
-              source="form"
-              onAnother={another}
-              onReroast={() => void run(result.url, true)}
-            />
-          </div>
-        ) : null}
-      </div>
-
-      {idle && showcase ? (
-        <div className="mt-20 scroll-mt-6" id="example">
-          <HeroProof r={showcase} />
-        </div>
-      ) : null}
-
-      {idle ? (
-        <section className="cut-in mt-20 border-t border-line pt-8" style={{ animationDelay: '620ms' }}>
-          <h2 className="label text-chalk">What we actually measure</h2>
-          <p className="mt-3 max-w-[60ch] text-body leading-relaxed text-mute">
-            Hero, specifics, proof, craft, CTA — weighted, and the same every time, so two
-            pages are actually comparable.
-          </p>
-          <dl className="mt-6 grid gap-px bg-line sm:grid-cols-2">
-            {[
-              ['Hero', 'Can a stranger tell what this is, who it is for, and what they get — in five seconds?'],
-              ['Specifics', 'Plain words over jargon, and copy that matches what the page actually shows.'],
-              ['Proof', 'Named customers, real numbers, visible pricing. Claims without evidence score zero.'],
-              ['Craft', 'Does the page look deliberately made, or generated?'],
-              ['CTA', 'One clear ask, in the reader’s own words.'],
-            ].map(([k, v]) => (
-              <div key={k} className="bg-ink px-4 py-4">
-                <dt className="label text-acid">{k}</dt>
-                <dd className="mt-2 text-body leading-relaxed text-mute">{v}</dd>
+              <div className="cut-in mb-6 flex items-center gap-2.5 text-label uppercase tracking-[0.16em] text-mute">
+                <span className="size-[7px] bg-acid" aria-hidden />
+                Landing-page roaster
               </div>
-            ))}
-          </dl>
-        </section>
-      ) : null}
 
-      {idle ? (
-        <footer className="mt-20 flex items-center justify-between gap-4 border-t border-line pt-6 text-micro text-mute">
-          <span className="flex items-center gap-2">
-            <Mark size={13} />
-            {WORDMARK}
-          </span>
-          <span className="text-right">We read the public HTML. Results are kept for 90 days.</span>
-        </footer>
-      ) : null}
-    </main>
+              <h1 className="cut-in max-w-[20ch] text-pretty text-display font-bold leading-[0.98] tracking-[-0.045em]">
+                Your landing page is probably <span className="text-acid">lying</span> to you.
+              </h1>
+              <p
+                className="cut-in mt-7 max-w-[52ch] text-pretty font-sans text-[0.95rem] leading-relaxed text-prose sm:text-[1.0625rem]"
+                style={{ animationDelay: '90ms' }}
+              >
+                Paste a URL. Founders and developers get a <b className="font-semibold text-chalk">brutal roast</b> of
+                their landing page, <b className="font-semibold text-chalk">a score out of 100</b>, and{' '}
+                <b className="font-semibold text-chalk">the rewritten headline</b>. Free, no account.
+              </p>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void run(url);
+                }}
+                className="cut-in mt-10"
+                style={{ animationDelay: '180ms' }}
+              >
+                <div className="flex flex-col gap-px border border-line bg-line sm:flex-row">
+                  <div className="relative flex flex-1 items-center bg-ink">
+                    <span className="select-none pl-4 pr-1 text-body text-acid" aria-hidden>
+                      &gt;
+                    </span>
+                    <input
+                      ref={inputRef}
+                      value={url}
+                      onChange={(e) => setUrl(e.target.value)}
+                      type="text"
+                      inputMode="url"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      spellCheck={false}
+                      enterKeyHint="go"
+                      aria-label="Your website URL"
+                      placeholder="yoursite.com"
+                      className="w-full border border-transparent bg-transparent py-4 pr-4 text-body text-chalk outline-none placeholder:text-mute/60 focus:outline-none"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading || !url.trim()}
+                    className="border border-acid bg-acid px-8 py-4 text-label text-ink transition-colors hover:border-chalk hover:bg-chalk disabled:cursor-not-allowed disabled:bg-transparent disabled:text-acid/70"
+                  >
+                    {loading ? 'Judging…' : 'Roast my site'}
+                  </button>
+                </div>
+              </form>
+
+              <div
+                className="cut-in mt-4 flex flex-wrap items-center gap-2 text-micro text-mute"
+                style={{ animationDelay: '260ms' }}
+              >
+                <span className="label">Try</span>
+                {EXAMPLES.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    onClick={() => {
+                      setUrl(e);
+                      void run(e);
+                    }}
+                    className="border border-line px-2.5 py-1 font-sans text-[0.78rem] text-chalk/80 transition-colors hover:border-acid hover:text-acid"
+                  >
+                    {e}
+                  </button>
+                ))}
+                {showcase ? (
+                  <a href="#example" className="ml-auto text-micro text-mute transition-colors hover:text-acid">
+                    See a real roast &rarr;
+                  </a>
+                ) : null}
+              </div>
+
+              {idle && recent.length > 0 ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-micro text-mute">
+                  <span className="label">Recent</span>
+                  {recent.map((e) => (
+                    <a
+                      key={e.id}
+                      href={`/r/${e.id}`}
+                      onClick={() => track('recent_clicked', { id: e.id })}
+                      className="flex items-center gap-1.5 border border-line px-2.5 py-1 text-chalk/80 transition-colors hover:border-acid hover:text-acid"
+                    >
+                      <span className="max-w-[14ch] truncate">{e.displayUrl}</span>
+                      <span className="tabular-nums text-mute">{e.score}</span>
+                    </a>
+                  ))}
+                </div>
+              ) : null}
+
+              {error ? (
+                <div
+                  role="alert"
+                  className="cut-in mt-8 border border-rough px-4 py-3.5 font-sans text-body text-chalk"
+                >
+                  <span className="mr-2 select-none font-bold text-rough" aria-hidden>
+                    !
+                  </span>
+                  {error}
+                </div>
+              ) : null}
+
+              <div ref={loadingRef}>{loading ? <Loading /> : null}</div>
+            </div>
+          </div>
+
+          {/* The scan cell — desktop only. hidden lg:block keeps it out of the
+              mobile flow entirely; LensScan also JS-gates the engine at 1024px. */}
+          <div className="relative hidden min-h-[34rem] overflow-hidden border-l border-line bg-[#0c0c0c] lg:block">
+            <LensScan mode={lensMode} className="absolute inset-0" />
+          </div>
+        </section>
+
+        {/* The result the visitor generated here (form flow). Narrow column, so
+            the card and reveal are byte-for-byte what they were. */}
+        {!loading && result ? (
+          <div className="mx-auto w-full max-w-3xl px-5 pb-28">
+            <div className="mt-12">
+              <ResultStage
+                r={result}
+                shareUrl={shareUrl}
+                source="form"
+                onAnother={another}
+                onReroast={() => void run(result.url, true)}
+              />
+            </div>
+          </div>
+        ) : null}
+
+        {/* WHAT WE ACTUALLY MEASURE — the rubric strip, directly under the hero. */}
+        {idle ? (
+          <section
+            aria-label="What we actually measure"
+            className="relative border-t border-line"
+          >
+            <span className="label absolute -top-[0.55rem] left-5 bg-ink px-2.5 lg:left-10 lg:translate-x-[18px] xl:left-20">
+              What we actually measure
+            </span>
+            <dl className="grid grid-cols-1 gap-px bg-line sm:grid-cols-2 lg:grid-cols-5 lg:gap-0 lg:bg-transparent lg:pl-10 xl:pl-20">
+              {RUBRIC.map(([num, key, desc]) => (
+                <div
+                  key={key}
+                  className="bg-ink px-5 pb-7 pt-9 lg:border-l lg:border-line lg:px-6 lg:pt-8"
+                >
+                  <dt className="label flex items-center gap-2.5 text-acid">
+                    <span className="not-italic text-mute">{num}</span>
+                    {key}
+                  </dt>
+                  <dd className="mt-3 max-w-[34ch] font-sans text-[0.9rem] leading-relaxed text-prose">
+                    {desc}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ) : null}
+
+        {idle ? (
+          <div className="mx-auto w-full max-w-3xl px-5 pb-28">
+            {showcase ? (
+              <div className="mt-20 scroll-mt-6" id="example">
+                <HeroProof r={showcase} />
+              </div>
+            ) : null}
+
+            <footer className="mt-20 flex items-center justify-between gap-4 border-t border-line pt-6 text-micro text-mute">
+              <span className="flex items-center gap-2">
+                <Mark size={13} />
+                {WORDMARK}
+              </span>
+              <span className="text-right">We read the public HTML. Results are kept for 90 days.</span>
+            </footer>
+          </div>
+        ) : null}
+      </main>
+    </>
   );
 }

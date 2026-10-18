@@ -18,7 +18,17 @@
   --color-rough: #ff4b3e;
   --color-mid: #ffb020;
 
+  /* Paragraph-copy neutral. --mute (#7a7a7a, ~4.6:1 on ink) is right for labels
+     but tiring for sentences; this is ~8.6:1. Named `prose` — not `body` — on
+     purpose: --text-body already owns the `text-body` utility (a font size), so
+     a `--color-body` would collide. Used only for secondary/body prose, never
+     the mono UI. */
+  --color-prose: #a8a8a8;
+
   --font-mono: var(--font-jet), ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Inter, self-hosted via next/font. Prose only — opt in with `font-sans`;
+     the interface default stays mono (see <body class="font-mono">). */
+  --font-sans: var(--font-inter), 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
   /* Five sizes. There is no sixth. */
   --text-display: clamp(2.25rem, 7.4vw, 4rem);

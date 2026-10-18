@@ -154,7 +154,7 @@ function Compare({ label, before, after }: { label: string; before: string; afte
     <div className="border border-line">
       <div className="flex gap-4 px-4 py-3.5">
         <span className="label w-20 shrink-0 text-rough">{label}</span>
-        <p className="min-w-0 text-body leading-relaxed text-mute">{before}</p>
+        <p className="min-w-0 font-sans text-body leading-relaxed text-prose">{before}</p>
       </div>
       <div className="flex gap-4 border-t border-line bg-acid/[0.04] px-4 py-3.5">
         <span className="label w-20 shrink-0 text-acid">{label}</span>
@@ -267,7 +267,9 @@ export function ResultView({
               <span className="label w-6 shrink-0 tabular-nums text-acid">
                 {String(i + 1).padStart(2, '0')}
               </span>
-              <span className="text-pretty text-body leading-relaxed text-chalk">{lineText}</span>
+              <span className="text-pretty font-sans text-body leading-relaxed text-chalk">
+                {lineText}
+              </span>
             </li>
           ))}
         </ul>
@@ -304,7 +306,7 @@ export function ResultView({
               {r.fixes.map((f, i) => (
                 <li key={i} className="rule flex gap-4 py-4 first:border-t-0 first:pt-0">
                   <span className="label w-6 shrink-0 tabular-nums text-acid">{i + 1}</span>
-                  <span className="text-pretty text-body leading-relaxed text-chalk">{f}</span>
+                  <span className="text-pretty font-sans text-body leading-relaxed text-chalk">{f}</span>
                 </li>
               ))}
             </ol>
@@ -323,7 +325,7 @@ export function ResultView({
               <p className="text-pretty text-title font-bold tracking-[-0.02em] text-chalk">
                 {appCheekySubhead(r.siteName)}
               </p>
-              <p className="mx-auto mt-3 max-w-sm text-body leading-relaxed text-mute">
+              <p className="mx-auto mt-3 max-w-sm font-sans text-body leading-relaxed text-mute">
                 It&rsquo;s an app, not a landing page — there&rsquo;s nothing to sell here. The roast
                 above is what we&rsquo;d say if it tried.
               </p>
