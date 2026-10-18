@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   assertFetchableUrl,
   assertPublicHost,
@@ -7,6 +7,7 @@ import {
   isBlockedIp,
   isBlockedIpv4,
   isBlockedIpv6,
+  resolveFetchTarget,
 } from '@/lib/ssrf';
 
 /** Stub resolver so tests never touch real DNS. */
@@ -58,8 +59,11 @@ describe('isBlockedIpv6', () => {
     ['::1', 'loopback'],
     ['::', 'unspecified'],
     ['fc00::1', 'unique-local'],
+    ['fd12::1', 'unique-local short'],
     ['fd12:3456::1', 'unique-local'],
     ['fe80::1', 'link-local'],
+    ['::ffff:192.168.0.1', 'v4-mapped private 192.168'],
+    ['::ffff:100.64.0.1', 'v4-mapped CGNAT'],
     ['febf::1', 'link-local top'],
     ['ff02::1', 'multicast'],
     ['::ffff:127.0.0.1', 'v4-mapped loopback'],
@@ -204,5 +208,62 @@ describe('assertFetchableUrl', () => {
 
   it('rejects malformed input', async () => {
     await expect(assertFetchableUrl('://////', ok)).rejects.toThrow(BlockedUrlError);
+  });
+});
+
+describe('resolveFetchTarget (resolve-once + pin)', () => {
+  it('returns the URL and the validated addresses to pin to', async () => {
+    const t = await resolveFetchTarget('https://example.com/path', resolvesTo('93.184.216.34'));
+    expect(t.url).toBeInstanceOf(URL);
+    expect(t.url.hostname).toBe('example.com');
+    // These are the addresses the caller MUST pin the socket to.
+    expect(t.addresses).toEqual(['93.184.216.34']);
+  });
+
+  it('resolves the hostname exactly once (the result is what gets pinned)', async () => {
+    const resolver = vi.fn(async () => [{ address: '93.184.216.34' }]);
+    await resolveFetchTarget('https://example.com/', resolver);
+    expect(resolver).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects when the single resolved address is private (DNS rebinding attempt)', async () => {
+    await expect(resolveFetchTarget('https://evil.com/', resolvesTo('169.254.169.254'))).rejects.toThrow(
+      BlockedUrlError,
+    );
+    await expect(resolveFetchTarget('https://evil.com/', resolvesTo('127.0.0.1'))).rejects.toThrow(
+      BlockedUrlError,
+    );
+  });
+
+  it('rejects the WHOLE request when ANY resolved address is private (no cherry-picking)', async () => {
+    await expect(
+      resolveFetchTarget('https://evil.com/', resolvesTo('93.184.216.34', '10.0.0.5')),
+    ).rejects.toThrow(BlockedUrlError);
+  });
+
+  it('returns every address when they are all public (so pinning can use any)', async () => {
+    const t = await resolveFetchTarget(
+      'https://example.com/',
+      resolvesTo('93.184.216.34', '1.1.1.1'),
+    );
+    expect(t.addresses).toEqual(['93.184.216.34', '1.1.1.1']);
+  });
+
+  it('still enforces scheme, port and credential rules', async () => {
+    const ok = resolvesTo('93.184.216.34');
+    await expect(resolveFetchTarget('ftp://example.com/', ok)).rejects.toThrow(BlockedUrlError);
+    await expect(resolveFetchTarget('http://example.com:22/', ok)).rejects.toThrow(BlockedUrlError);
+    await expect(resolveFetchTarget('https://u:p@example.com/', ok)).rejects.toThrow(BlockedUrlError);
+  });
+
+  it('pins a bare public IP literal to itself without resolving', async () => {
+    const t = await resolveFetchTarget('https://8.8.8.8/', resolveFails);
+    expect(t.addresses).toEqual(['8.8.8.8']);
+  });
+
+  it('rejects a private IP literal', async () => {
+    await expect(resolveFetchTarget('http://169.254.169.254/latest/', resolveFails)).rejects.toThrow(
+      BlockedUrlError,
+    );
   });
 });

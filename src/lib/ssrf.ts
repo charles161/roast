@@ -165,11 +165,8 @@ export async function assertPublicHost(
   return addrs.map((a) => a.address);
 }
 
-/** Full check of one absolute URL: scheme, port, hostname, and every resolved IP. */
-export async function assertFetchableUrl(
-  urlStr: string,
-  resolver?: (h: string) => Promise<{ address: string }[]>,
-): Promise<URL> {
+/** Scheme / credentials / port checks on a URL string. No DNS, no network. */
+function assertSafeUrlShape(urlStr: string): URL {
   let u: URL;
   try {
     u = new URL(urlStr);
@@ -188,7 +185,35 @@ export async function assertFetchableUrl(
     const ALLOWED_PORTS = new Set([80, 443, 3000, 8000, 8080, 8443]);
     if (!ALLOWED_PORTS.has(port)) throw new BlockedUrlError('That port is not allowed.');
   }
-
-  await assertPublicHost(u.hostname, resolver);
   return u;
+}
+
+/** A URL that has been validated and the public IPs it resolved to. */
+export type FetchTarget = { url: URL; addresses: string[] };
+
+/**
+ * Resolve-once SSRF check — the anti-rebinding core.
+ *
+ * Validates the URL shape, resolves the hostname a SINGLE time, asserts EVERY
+ * resolved address is public, and RETURNS those addresses so the caller can pin
+ * the socket to them. This defeats DNS rebinding / TOCTOU: the connection is
+ * made only to an address proven public here, never to whatever a second DNS
+ * lookup at connect time might return.
+ */
+export async function resolveFetchTarget(
+  urlStr: string,
+  resolver?: (h: string) => Promise<{ address: string }[]>,
+): Promise<FetchTarget> {
+  const url = assertSafeUrlShape(urlStr);
+  const addresses = await assertPublicHost(url.hostname, resolver);
+  return { url, addresses };
+}
+
+/** Full check of one absolute URL: scheme, port, hostname, and every resolved IP. */
+export async function assertFetchableUrl(
+  urlStr: string,
+  resolver?: (h: string) => Promise<{ address: string }[]>,
+): Promise<URL> {
+  const { url } = await resolveFetchTarget(urlStr, resolver);
+  return url;
 }
