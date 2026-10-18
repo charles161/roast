@@ -58,6 +58,7 @@ export function RoastApp({
   initialUrl,
   roasted = 0,
   showcase,
+  expiredShare = false,
 }: {
   initialResult?: RoastResult;
   initialUrl?: string;
@@ -65,6 +66,8 @@ export function RoastApp({
   roasted?: number;
   /** A real cached roast to show as proof, or undefined. */
   showcase?: RoastResult;
+  /** /r/<id> had nothing cached: show a dismissible "that roast has expired" notice. */
+  expiredShare?: boolean;
 }) {
   const [url, setUrl] = useState(initialUrl ?? '');
   const [result, setResult] = useState<RoastResult | null>(initialResult ?? null);
@@ -72,6 +75,7 @@ export function RoastApp({
   const [error, setError] = useState<string | null>(null);
   const [arrived, setArrived] = useState(Boolean(initialResult));
   const [recent, setRecent] = useState<RecentEntry[]>([]);
+  const [expiredOpen, setExpiredOpen] = useState(expiredShare);
   const inputRef = useRef<HTMLInputElement>(null);
   const loadingRef = useRef<HTMLDivElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -91,6 +95,7 @@ export function RoastApp({
     const target = raw.trim();
     if (!target || loading) return;
     track('scan_submitted', { inputLen: target.length });
+    setExpiredOpen(false);
     setLoading(true);
     setError(null);
     setResult(null);
@@ -187,6 +192,28 @@ export function RoastApp({
           </span>
         ) : null}
       </nav>
+
+      {expiredOpen ? (
+        <div
+          role="status"
+          className="cut-in mt-6 flex items-start gap-3 border border-acid px-4 py-3.5 text-body text-chalk"
+        >
+          <span className="select-none font-bold text-acid" aria-hidden>
+            !
+          </span>
+          <p className="flex-1">
+            That roast has expired &mdash; roast any site below for a fresh link.
+          </p>
+          <button
+            type="button"
+            onClick={() => setExpiredOpen(false)}
+            aria-label="Dismiss notice"
+            className="-my-1.5 -mr-2 select-none px-2.5 py-1 text-title leading-none text-mute transition-colors hover:text-acid"
+          >
+            &times;
+          </button>
+        </div>
+      ) : null}
 
       <header className="pt-16 sm:pt-24">
         <h1 className="cut-in max-w-[20ch] text-pretty text-display font-bold leading-[0.98] tracking-[-0.045em]">
@@ -336,7 +363,7 @@ export function RoastApp({
             <Mark size={13} />
             {WORDMARK}
           </span>
-          <span className="text-right">We read the public HTML. Results are kept for a day.</span>
+          <span className="text-right">We read the public HTML. Results are kept for 90 days.</span>
         </footer>
       ) : null}
     </main>

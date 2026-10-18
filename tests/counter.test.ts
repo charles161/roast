@@ -2,8 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { TTL_MS } from '@/lib/cache';
-import { MIN_DISPLAY, roastCount, __resetCounter } from '@/lib/counter';
+import { MIN_DISPLAY, COUNT_WINDOW_MS, roastCount, __resetCounter } from '@/lib/counter';
 
 let dir: string;
 
@@ -43,9 +42,18 @@ describe('roastCount', () => {
     expect(await roastCount()).toBe(0);
   });
 
-  it('ignores entries past their TTL', async () => {
+  it('ignores entries past the 24h count window', async () => {
     entry('aaaaaaaaaaaa.json', 1000);
-    entry('bbbbbbbbbbbb.json', TTL_MS + 60_000);
+    entry('bbbbbbbbbbbb.json', COUNT_WINDOW_MS + 60_000);
+    expect(await roastCount()).toBe(1);
+  });
+
+  it('counts a rolling 24h, not the 90-day cache lifetime (UI label says "/ 24h")', async () => {
+    const HOUR = 60 * 60 * 1000;
+    expect(COUNT_WINDOW_MS).toBe(24 * HOUR);
+    entry('aaaaaaaaaaaa.json', 23 * HOUR);
+    entry('bbbbbbbbbbbb.json', 25 * HOUR); // still cached for 90d, but not "last 24h"
+    entry('cccccccccccc.json', 30 * 24 * HOUR);
     expect(await roastCount()).toBe(1);
   });
 

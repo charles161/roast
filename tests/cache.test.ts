@@ -70,6 +70,18 @@ describe('cacheGet / cacheSet', () => {
     expect(fs.existsSync(path.join(dir, 'results'))).toBe(false);
   });
 
+  it('keeps a result for 90 days so a shared link outlives launch day', async () => {
+    const DAY = 24 * 60 * 60 * 1000;
+    const { cacheGet, cacheSet, idForUrl, TTL_MS } = await load();
+    expect(TTL_MS).toBe(90 * DAY);
+    const id = idForUrl('https://example.com/viral');
+    const t0 = Date.now();
+    await cacheSet(id, { v: 'viral' }, t0);
+    expect(await cacheGet(id, t0 + 2 * DAY)).toEqual({ v: 'viral' }); // used to be gone after 1 day
+    expect(await cacheGet(id, t0 + 89 * DAY)).toEqual({ v: 'viral' });
+    expect(await cacheGet(id, t0 + 91 * DAY)).toBeNull();
+  });
+
   it('expires an entry after the TTL', async () => {
     const { cacheGet, cacheSet, idForUrl, TTL_MS } = await load();
     const id = idForUrl('https://example.com/');

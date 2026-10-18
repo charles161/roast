@@ -50,8 +50,13 @@ export default async function ResultPage({ params }: Props) {
   const [n, r] = await Promise.all([roastCount(), getCached(id)]);
   const roasted = n >= MIN_DISPLAY ? n : 0;
 
-  // An expired share link should still convert: fall through to the form.
-  if (!r) return <RoastApp roasted={roasted} showcase={(await showcaseRoast()) ?? undefined} />;
+  // An expired share link should still convert: fall through to the form, with
+  // a notice so it doesn't look broken.
+  if (!r) {
+    return (
+      <RoastApp roasted={roasted} showcase={(await showcaseRoast()) ?? undefined} expiredShare />
+    );
+  }
 
   return <RoastApp initialResult={r} initialUrl={r.displayUrl} roasted={roasted} />;
 }

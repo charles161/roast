@@ -51,6 +51,20 @@ describe('cache (KV path)', () => {
     expect(await b.cache.cacheGet(id)).toEqual({ hello: 'world' });
   });
 
+  it('sets the Redis expiry to the 90-day TTL so KV matches the in-process window', async () => {
+    class SpyKv extends FakeKv {
+      lastEx: number | undefined;
+      async set(key: string, value: unknown, opts?: { ex?: number }): Promise<unknown> {
+        this.lastEx = opts?.ex;
+        return super.set(key, value, opts);
+      }
+    }
+    const kv = new SpyKv();
+    const a = await loadWith(kv);
+    await a.cache.cacheSet(a.cache.idForUrl('https://stripe.com/'), { v: 1 });
+    expect(kv.lastEx).toBe(90 * 24 * 60 * 60);
+  });
+
   it('honours the TTL window on the KV read', async () => {
     const kv = new FakeKv();
     const a = await loadWith(kv);
@@ -126,12 +140,21 @@ describe('counter (KV path)', () => {
     expect(await counter.roastCount(now)).toBe(2);
   });
 
-  it('excludes (and prunes) entries older than the TTL', async () => {
+  it('excludes (and prunes) entries older than the 24h count window', async () => {
     const kv = new FakeKv();
-    const { counter, cache } = await loadWith(kv);
-    const now = 10_000_000;
+    const { counter } = await loadWith(kv);
+    const now = 10_000_000_000;
     await counter.recordRoast('aaaaaaaaaaaa', now - 1000);
-    await counter.recordRoast('cccccccccccc', now - (cache.TTL_MS + 5000));
+    await counter.recordRoast('cccccccccccc', now - (counter.COUNT_WINDOW_MS + 5000));
+    expect(await counter.roastCount(now)).toBe(1);
+  });
+
+  it('still excludes a roast that is cached (inside the 90-day TTL) but older than 24h', async () => {
+    const kv = new FakeKv();
+    const { counter } = await loadWith(kv);
+    const now = 10_000_000_000;
+    await counter.recordRoast('aaaaaaaaaaaa', now - 1000);
+    await counter.recordRoast('dddddddddddd', now - 3 * 24 * 60 * 60 * 1000);
     expect(await counter.roastCount(now)).toBe(1);
   });
 });

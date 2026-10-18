@@ -11,7 +11,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { k, kv, kvEnabled } from './kv';
 
-export const TTL_MS = 24 * 60 * 60 * 1000;
+// 90 days: a shared /r/<id> link has to outlive launch day or the viral loop
+// dies after 24h. Storage is cheap (one small JSON per site), so keep it long.
+// Also drives the KV `ex` (TTL_SEC) and the disk/in-memory expiry below.
+export const TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const TTL_SEC = Math.ceil(TTL_MS / 1000);
 const MAX_MEM_ENTRIES = 500;
 const MAX_DISK_ENTRIES = 5000;

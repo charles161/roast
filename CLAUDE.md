@@ -25,7 +25,7 @@ A viral web toy for founders/devs. Paste a website URL → in ~10s get:
 5. Return JSON for the UI; render the card; generate the OG image for the result URL (so `/r/<id>` or `/?url=` previews richly).
 
 ## Guards (MUST — this will get an 11k-person X blast)
-- **Per-domain cache**: same normalized URL → return cached result (in-memory + a small on-disk/KV cache, TTL ~24h). Cheap + fast + consistent shareable results.
+- **Per-domain cache**: same normalized URL → return cached result (in-memory + a small on-disk/KV cache, TTL 90 days so shared links survive). Cheap + fast + consistent shareable results.
 - **Rate limit** per IP (e.g. 10/min, 60/hr) → friendly 429.
 - **Hard LLM spend cap**: a global daily cap + per-request token caps; when the cap is hit, serve cached-only + a "we're melting, try later" state. Log spend.
 - Fetch timeout + body size cap. Never follow file:// or non-web schemes. Sanitize extracted text before prompting.

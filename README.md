@@ -122,7 +122,7 @@ scores every site near zero.
 
 ## Guards
 
-- **Cache** — per-URL, 24h TTL, memory LRU over an atomic on-disk store, so a
+- **Cache** — per-URL, 90-day TTL, memory LRU over an atomic on-disk store, so a
   viral link keeps resolving across restarts and costs nothing to re-serve.
 - **Rate limit** — 10/min and 60/hr per IP, sliding windows. Rejected requests
   are not recorded, so hammering cannot extend the penalty.
