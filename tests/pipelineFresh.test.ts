@@ -249,3 +249,72 @@ describe('result.url round-trips through the normalizer (the Re-roast button re-
     expect(idForUrl(normalizeUrl(once))).toBe(idForUrl(once));
   });
 });
+
+describe('durable URL pointer (self-healing share links)', () => {
+  it('a normal miss leaves a pointer behind', async () => {
+    const { pipeline, cache } = await load();
+    const id = cache.idForUrl(URL_);
+    expect(await cache.urlForId(id)).toBeNull();
+    await pipeline.roastUrl(URL_);
+    expect(await cache.urlForId(id)).toBe(URL_);
+  });
+
+  it('a fresh re-roast writes the pointer too', async () => {
+    const { pipeline, cache } = await load();
+    const id = cache.idForUrl(URL_);
+    await pipeline.roastUrl(URL_, { fresh: true });
+    expect(await cache.urlForId(id)).toBe(URL_);
+  });
+
+  it('heals after real eviction: normal roast of the pointer URL regenerates and re-caches the id', async () => {
+    const { pipeline, cache } = await load();
+    const id = cache.idForUrl(URL_);
+    await pipeline.roastUrl(URL_);
+    // Evict only the result, as the TTL does; keep the pointer. A new load() is
+    // a cold process: empty LRU, its own LLM/network mocks.
+    fs.rmSync(path.join(dir, 'results'), { recursive: true, force: true });
+    const cold = await load();
+    expect(await cold.pipeline.getCached(id)).toBeNull();
+
+    const url = await cold.cache.urlForId(id);
+    expect(url).toBe(URL_);
+    const out = await cold.pipeline.roastUrl(url!);
+    expect(out.cached).toBe(false);
+    expect(out.result.id).toBe(id);
+    expect((await cold.pipeline.getCached(id))?.verdict).toBe('FRESH verdict.');
+    expect(cold.fetchPage).toHaveBeenCalledTimes(1);
+    expect(cold.writeRoast).toHaveBeenCalledTimes(1);
+  });
+
+  it('a cache HIT backfills the pointer for a legacy result (once)', async () => {
+    const kv = new FakeKv();
+    const { pipeline, cache } = await load({ kv });
+    const id = cache.idForUrl(URL_);
+    // A result cached before pointers existed: write the result key directly.
+    await kv.set(`roast:r:${id}`, { value: stale(id), expires: Date.now() + 1e9 });
+    expect(await cache.urlForId(id)).toBeNull();
+
+    await pipeline.roastUrl(URL_);
+    expect(await cache.urlForId(id)).toBe(URL_);
+
+    await pipeline.roastUrl(URL_);
+    await pipeline.getCached(id);
+    expect(kv.calls.filter((c) => c === `set roast:u:${id}`)).toHaveLength(1);
+  });
+
+  it('getCached on a legacy result backfills the pointer (the /r/<id> and OG paths)', async () => {
+    const kv = new FakeKv();
+    const { pipeline, cache } = await load({ kv });
+    const id = cache.idForUrl(URL_);
+    await kv.set(`roast:r:${id}`, { value: stale(id), expires: Date.now() + 1e9 });
+    await pipeline.getCached(id);
+    expect(await cache.urlForId(id)).toBe(URL_);
+  });
+
+  it('getCached on a miss does nothing and returns null', async () => {
+    const kv = new FakeKv();
+    const { pipeline } = await load({ kv });
+    expect(await pipeline.getCached('abcdefghijkl')).toBeNull();
+    expect(kv.calls.some((c) => c.startsWith('set '))).toBe(false);
+  });
+});

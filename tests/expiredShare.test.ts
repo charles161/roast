@@ -68,11 +68,18 @@ describe('RoastApp expired-share notice', () => {
 
 describe('/r/[id] page', () => {
   const getCached = vi.fn();
+  const urlForId = vi.fn();
 
   beforeEach(() => {
     vi.resetModules();
     getCached.mockReset();
+    urlForId.mockReset();
+    urlForId.mockResolvedValue(null); // default: no durable pointer for this id
     vi.doMock('@/lib/pipeline', () => ({ getCached }));
+    vi.doMock('@/lib/cache', async () => ({
+      ...(await vi.importActual<typeof import('@/lib/cache')>('@/lib/cache')),
+      urlForId,
+    }));
     vi.doMock('@/lib/counter', () => ({ MIN_DISPLAY: 25, roastCount: async () => 0 }));
     vi.doMock('@/lib/showcase', () => ({ showcaseRoast: async () => null }));
     vi.doMock('@/lib/baseUrl', () => ({ originFromRequest: async () => 'https://example.test' }));
@@ -86,11 +93,13 @@ describe('/r/[id] page', () => {
     return el as ReactElement<Record<string, unknown>>;
   }
 
-  it('flags expiredShare when nothing is cached for a valid id', async () => {
+  it('flags expiredShare when nothing is cached AND no pointer exists (ancient link)', async () => {
     getCached.mockResolvedValue(null);
     const el = await render('abcdefghijkl');
+    expect(urlForId).toHaveBeenCalledWith('abcdefghijkl');
     expect(el.props.expiredShare).toBe(true);
     expect(el.props.initialResult).toBeUndefined();
+    expect(el.props.resolveUrl).toBeUndefined();
   });
 
   it('does not flag expiredShare when a result exists', async () => {
@@ -98,11 +107,14 @@ describe('/r/[id] page', () => {
     getCached.mockResolvedValue(r);
     const el = await render('abcdefghijkl');
     expect(el.props.expiredShare).toBeUndefined();
+    expect(el.props.resolveUrl).toBeUndefined();
     expect(el.props.initialResult).toBe(r);
+    expect(urlForId).not.toHaveBeenCalled(); // a hit never pays for the pointer lookup
   });
 
   it('still 404s on a malformed id', async () => {
     await expect(render('../nope')).rejects.toThrow();
     expect(getCached).not.toHaveBeenCalled();
+    expect(urlForId).not.toHaveBeenCalled();
   });
 });

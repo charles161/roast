@@ -5,6 +5,11 @@
  *     consistent for everyone who clicks the same shared card).
  *   - KV env present: in-memory LRU in front of shared Redis, because a
  *     serverless filesystem is ephemeral and every instance must agree.
+ *
+ * Alongside every result sits a DURABLE id -> URL pointer (`roast:u:<id>`, or a
+ * `<id>.url` sidecar on disk) that never expires. `idForUrl` is a one-way hash,
+ * so without it a shared /r/<id> link could not be regenerated once the result
+ * hits its TTL. It is a ~50-byte string; keeping it forever is cheap.
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -21,6 +26,11 @@ const MAX_DISK_ENTRIES = 5000;
 
 const CACHE_DIR = process.env.ROAST_CACHE_DIR || path.join(process.cwd(), '.cache');
 const RESULTS_DIR = path.join(CACHE_DIR, 'results');
+// Disk-mode pointers live apart from results so pruneDisk (which only ever
+// looks at RESULTS_DIR) can never reap one. Best-effort: KV is prod.
+const URLS_DIR = path.join(CACHE_DIR, 'urls');
+/** Never evict-and-forget more than this many "already remembered" ids per instance. */
+const MAX_REMEMBERED = 5000;
 
 /** Stable short id for a normalized URL — also the /r/<id> slug. */
 export function idForUrl(normalizedUrl: string): string {
@@ -37,10 +47,20 @@ const mem = new Map<string, Entry<unknown>>();
 /** KV-mode only: ids this instance has written, so __clearCache can purge them. */
 const kvWritten = new Set<string>();
 
+/** KV-mode only: ids whose pointer this instance has written, for __clearCache. */
+const kvUrlWritten = new Set<string>();
+/** Ids whose pointer this instance has already ensured, so cache hits don't each hit the store. */
+const remembered = new Set<string>();
+
 const kvKey = (id: string) => k(`r:${id}`);
+const urlKey = (id: string) => k(`u:${id}`);
 
 function diskPath(id: string): string {
   return path.join(RESULTS_DIR, `${id}.json`);
+}
+
+function urlDiskPath(id: string): string {
+  return path.join(URLS_DIR, `${id}.url`);
 }
 
 function memSet<T>(id: string, value: T, expires: number): void {
@@ -100,6 +120,14 @@ export async function cacheGet<T>(id: string, now = Date.now()): Promise<T | nul
 
 export async function cacheSet<T>(id: string, value: T, now = Date.now()): Promise<void> {
   if (!isValidId(id)) return;
+  await storeResult(id, value, now);
+  // Every cached result (fresh re-roast included) leaves a permanent pointer to
+  // its URL. Generic values with no `url` (tests, future callers) simply skip it.
+  const url = (value as { url?: unknown } | null)?.url;
+  if (typeof url === 'string') await rememberUrl(id, url);
+}
+
+async function storeResult<T>(id: string, value: T, now: number): Promise<void> {
   const expires = now + TTL_MS;
   memSet(id, value, expires);
 
@@ -118,6 +146,84 @@ export async function cacheSet<T>(id: string, value: T, now = Date.now()): Promi
     fs.renameSync(tmp, diskPath(id)); // atomic: readers never see a partial file
     pruneDisk();
   } catch { /* memory-only is still correct */ }
+}
+
+/**
+ * A pointer is only worth keeping if regenerating from it lands back on the
+ * SAME id (otherwise the "healed" link would stay dead) and it is something the
+ * pipeline would ever fetch. The SSRF guard still runs when it is re-roasted.
+ */
+function pointerOk(id: string, url: unknown): url is string {
+  return (
+    typeof url === 'string' &&
+    url.length <= 2048 &&
+    /^https?:\/\//i.test(url) &&
+    idForUrl(url) === id
+  );
+}
+
+/**
+ * Remember id -> URL permanently (no TTL). Best-effort: a failure here must
+ * never break a roast, so it logs and moves on.
+ */
+export async function rememberUrl(id: string, url: string): Promise<void> {
+  if (!isValidId(id) || !pointerOk(id, url)) return;
+  if (remembered.size >= MAX_REMEMBERED) remembered.clear();
+  remembered.add(id);
+
+  if (kvEnabled()) {
+    try {
+      await kv()!.set(urlKey(id), url); // no `ex`: this outlives the result
+      kvUrlWritten.add(id);
+    } catch (err) {
+      console.warn('[cache] could not store url pointer', id, err instanceof Error ? err.message : err);
+    }
+    return;
+  }
+
+  try {
+    fs.mkdirSync(URLS_DIR, { recursive: true });
+    const tmp = `${urlDiskPath(id)}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, url, 'utf8');
+    fs.renameSync(tmp, urlDiskPath(id));
+  } catch (err) {
+    console.warn('[cache] could not store url pointer', id, err instanceof Error ? err.message : err);
+  }
+}
+
+/** The URL behind a share id, or null if it was never stored. Survives result expiry. */
+export async function urlForId(id: string): Promise<string | null> {
+  if (!isValidId(id)) return null;
+
+  if (kvEnabled()) {
+    try {
+      const v = await kv()!.get<unknown>(urlKey(id));
+      return pointerOk(id, v) ? v : null;
+    } catch {
+      return null; // KV blip -> behave like "no pointer"
+    }
+  }
+
+  try {
+    const v = fs.readFileSync(urlDiskPath(id), 'utf8').trim();
+    return pointerOk(id, v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Legacy results (cached before pointers existed) get one when they're next
+ * served. Deduped per instance so a cache-hit storm is not a write storm.
+ */
+export async function backfillUrl(value: unknown): Promise<void> {
+  try {
+    const url = (value as { url?: unknown } | null)?.url;
+    if (typeof url !== 'string' || !/^https?:\/\//i.test(url) || url.length > 2048) return;
+    const id = idForUrl(url);
+    if (remembered.has(id)) return;
+    await rememberUrl(id, url);
+  } catch { /* best-effort */ }
 }
 
 let lastPrune = 0;
@@ -144,12 +250,16 @@ function pruneDisk(): void {
 /** Test seam. */
 export async function __clearCache(): Promise<void> {
   mem.clear();
+  remembered.clear();
   if (kvEnabled()) {
     try {
       if (kvWritten.size) await kv()!.del(...[...kvWritten].map(kvKey));
+      if (kvUrlWritten.size) await kv()!.del(...[...kvUrlWritten].map(urlKey));
     } catch { /* ignore */ }
     kvWritten.clear();
+    kvUrlWritten.clear();
     return;
   }
   try { fs.rmSync(RESULTS_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
+  try { fs.rmSync(URLS_DIR, { recursive: true, force: true }); } catch { /* ignore */ }
 }

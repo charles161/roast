@@ -1,11 +1,12 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { RoastApp } from '@/components/RoastApp';
-import { isValidId } from '@/lib/cache';
+import { isValidId, urlForId } from '@/lib/cache';
 import { getCached } from '@/lib/pipeline';
 import { originFromRequest } from '@/lib/baseUrl';
 import { MIN_DISPLAY, roastCount } from '@/lib/counter';
 import { showcaseRoast } from '@/lib/showcase';
+import { displayUrl } from '@/lib/url';
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -50,9 +51,22 @@ export default async function ResultPage({ params }: Props) {
   const [n, r] = await Promise.all([roastCount(), getCached(id)]);
   const roasted = n >= MIN_DISPLAY ? n : 0;
 
-  // An expired share link should still convert: fall through to the form, with
-  // a notice so it doesn't look broken.
   if (!r) {
+    // The result aged out, but the id -> URL pointer never does. Hand the URL to
+    // the client, which runs a normal (cache-or-generate, NOT fresh) roast on
+    // mount: the same id comes back to life and every later open is instant.
+    // Rendering never waits on that roast, and link-preview crawlers (no JS)
+    // never trigger one. The roast itself goes through /api/roast, so the SSRF
+    // guard, rate limit and spend cap all still apply.
+    const resolveUrl = await urlForId(id);
+    if (resolveUrl) {
+      return (
+        <RoastApp roasted={roasted} resolveUrl={resolveUrl} initialUrl={displayUrl(resolveUrl)} />
+      );
+    }
+
+    // Ancient link (no pointer): still convert, with a notice so it doesn't
+    // look broken.
     return (
       <RoastApp roasted={roasted} showcase={(await showcaseRoast()) ?? undefined} expiredShare />
     );

@@ -27,6 +27,55 @@ export function roastRequestBody(url: string, fresh = false): string {
   return JSON.stringify(fresh ? { url, fresh: true } : { url });
 }
 
+/**
+ * The URL a /r/<id> miss should auto-roast on mount, or null. A link whose
+ * result aged out still has a durable id -> URL pointer; the page passes it as
+ * `resolveUrl` and a normal roast regenerates the result under the same id.
+ * Never when a result is already there.
+ */
+export function healTarget({
+  resolveUrl,
+  initialResult,
+}: {
+  resolveUrl?: string;
+  initialResult?: RoastResult;
+}): string | null {
+  if (initialResult) return null;
+  const target = resolveUrl?.trim();
+  return target ? target : null;
+}
+
+/**
+ * The result card plus its actions. `source` says how the visitor got here:
+ *   - 'form': they generated it themselves in THIS session via the home form.
+ *   - 'link': they opened a /r/<id> link (shared, or one that just self-healed).
+ * Re-roast is for the owner's own session only. On a link-open view every idle
+ * click would cost an LLM call during a viral blast, and "Roast yours" already
+ * carries the loop there.
+ */
+export function ResultStage({
+  r,
+  shareUrl,
+  source,
+  onAnother,
+  onReroast,
+}: {
+  r: RoastResult;
+  shareUrl: string;
+  source: 'form' | 'link';
+  onAnother?: () => void;
+  onReroast?: () => void;
+}) {
+  return (
+    <ResultView
+      r={r}
+      shareUrl={shareUrl}
+      onAnother={onAnother}
+      onReroast={source === 'form' ? onReroast : undefined}
+    />
+  );
+}
+
 /** A terminal log, not a spinner. The wait is part of the voice. */
 function Loading() {
   const [n, setN] = useState(1);
@@ -64,6 +113,7 @@ export function RoastApp({
   roasted = 0,
   showcase,
   expiredShare = false,
+  resolveUrl,
 }: {
   initialResult?: RoastResult;
   initialUrl?: string;
@@ -73,10 +123,17 @@ export function RoastApp({
   showcase?: RoastResult;
   /** /r/<id> had nothing cached: show a dismissible "that roast has expired" notice. */
   expiredShare?: boolean;
+  /**
+   * /r/<id> had no result but a durable pointer to its URL: roast it on mount
+   * (a normal cache-or-generate roast, never fresh) to heal the link in place.
+   */
+  resolveUrl?: string;
 }) {
   const [url, setUrl] = useState(initialUrl ?? '');
   const [result, setResult] = useState<RoastResult | null>(initialResult ?? null);
-  const [loading, setLoading] = useState(false);
+  // Healing a link: start in the loading state so the very first paint is the
+  // terminal log, not a flash of the idle homepage.
+  const [loading, setLoading] = useState(() => healTarget({ resolveUrl, initialResult }) !== null);
   const [error, setError] = useState<string | null>(null);
   const [arrived, setArrived] = useState(Boolean(initialResult));
   const [recent, setRecent] = useState<RecentEntry[]>([]);
@@ -84,6 +141,7 @@ export function RoastApp({
   const inputRef = useRef<HTMLInputElement>(null);
   const loadingRef = useRef<HTMLDivElement>(null);
   const resultRef = useRef<HTMLDivElement>(null);
+  const healed = useRef(false);
 
   // Client-only: load the viewer's own recent roasts after mount (keeps SSR
   // output stable; renders nothing until there's real history).
@@ -91,23 +149,43 @@ export function RoastApp({
     setRecent(getRecent());
   }, []);
 
+  // Self-heal an expired share link: roast the remembered URL once, on mount.
+  // The ref (not state) is the guard, so StrictMode's double effect or a
+  // re-render can never fire a second LLM call.
+  useEffect(() => {
+    const target = healTarget({ resolveUrl, initialResult });
+    if (!target || healed.current) return;
+    healed.current = true;
+    void run(target, false, true);
+    // Mount-only on purpose: the props describe the page the visitor landed on.
+  }, []);
+
   // Fire once per distinct result shown — fresh scan or a shared card.
   useEffect(() => {
     if (result) track('result_viewed', { id: result.id, overall: result.score.overall });
   }, [result]);
 
-  async function run(raw: string, fresh = false) {
+  /**
+   * `heal`: this roast is the page regenerating the link the visitor opened
+   * (not something they asked for). It starts already in the loading state,
+   * skips the scroll-jumps, and lands in the same card-first view as any other
+   * link-open visit.
+   */
+  async function run(raw: string, fresh = false, heal = false) {
     const target = raw.trim();
-    if (!target || loading) return;
-    track('scan_submitted', fresh ? { inputLen: target.length, fresh: true } : { inputLen: target.length });
+    if (!target || (loading && !heal)) return;
+    if (heal) track('link_heal_started', { inputLen: target.length });
+    else track('scan_submitted', fresh ? { inputLen: target.length, fresh: true } : { inputLen: target.length });
     setExpiredOpen(false);
     setLoading(true);
     setError(null);
     setResult(null);
     setArrived(false);
-    requestAnimationFrame(() =>
-      loadingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
-    );
+    if (!heal) {
+      requestAnimationFrame(() =>
+        loadingRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }),
+      );
+    }
     try {
       const res = await fetch('/api/roast', {
         method: 'POST',
@@ -121,6 +199,14 @@ export function RoastApp({
       }
       const r = data as RoastResult;
       setResult(r);
+      if (heal) {
+        // Same id as the link they opened (the pointer only exists for ids that
+        // hash from their URL), so the address bar is already right. This is a
+        // link-open view: not their own roast, so no "Recent" entry and no
+        // Re-roast; the card-first layout with "Roast yours" carries the loop.
+        setArrived(true);
+        return;
+      }
       // Remember it for this viewer (their own roast), newest first, capped at 3.
       setRecent(
         pushRecent({
@@ -178,12 +264,8 @@ export function RoastApp({
           </RoastAnother>
         </nav>
         <div className="mt-8">
-          <ResultView
-            r={result}
-            shareUrl={shareUrl}
-            onAnother={another}
-            onReroast={() => void run(result.url, true)}
-          />
+          {/* A link-open view (shared, or self-healed): no Re-roast, see ResultStage. */}
+          <ResultStage r={result} shareUrl={shareUrl} source="link" onAnother={another} />
         </div>
       </main>
     );
@@ -332,9 +414,10 @@ export function RoastApp({
       <div ref={resultRef} className="scroll-mt-6">
         {!loading && result ? (
           <div className="mt-12">
-            <ResultView
+            <ResultStage
               r={result}
               shareUrl={shareUrl}
+              source="form"
               onAnother={another}
               onReroast={() => void run(result.url, true)}
             />

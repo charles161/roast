@@ -23,6 +23,8 @@ export class FakeKv implements KvClient {
   private zsets = new Map<string, Map<string, number>>();
   /** Every call, in order — lets tests assert which ops ran (e.g. atomicity). */
   readonly calls: string[] = [];
+  /** The options each key was last SET with (undefined = no TTL), so tests can assert expiry. */
+  readonly setOpts = new Map<string, { ex?: number } | undefined>();
 
   private z(key: string): Map<string, number> {
     let m = this.zsets.get(key);
@@ -44,8 +46,9 @@ export class FakeKv implements KvClient {
     }
   }
 
-  async set(key: string, value: unknown, _opts?: { ex?: number }): Promise<unknown> {
+  async set(key: string, value: unknown, opts?: { ex?: number }): Promise<unknown> {
     this.calls.push(`set ${key}`);
+    this.setOpts.set(key, opts);
     this.strings.set(key, JSON.stringify(value));
     return 'OK';
   }

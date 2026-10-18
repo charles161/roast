@@ -6,6 +6,11 @@ import type { RoastResult } from '@/lib/types';
 /**
  * The "Re-roast" action lives on a RESULT only (next to the share actions),
  * never on the plain homepage, and the default request body is unchanged.
+ *
+ * It is for the page-owner's OWN session only: a result the visitor generated
+ * through the home form. Opening someone's /r/<id> link (shared, or a link that
+ * just self-healed) must not offer it, or a viral blast turns into idle LLM
+ * spend; "Roast another / Roast yours" carries the loop there instead.
  */
 
 function fakeResult(over: Partial<RoastResult> = {}): RoastResult {
@@ -67,6 +72,42 @@ describe('ResultView re-roast action', () => {
   });
 });
 
+describe('Re-roast is for own-session results only', () => {
+  async function stage(props: {
+    source: 'form' | 'link';
+    onReroast?: (() => void) | undefined;
+  }): Promise<string> {
+    const { ResultStage } = await import('@/components/RoastApp');
+    return renderToStaticMarkup(
+      createElement(ResultStage, {
+        r: fakeResult(),
+        shareUrl: 'https://x.test/r/abcdefghijkl',
+        onAnother: () => {},
+        onReroast: () => {},
+        ...props,
+      }),
+    );
+  }
+
+  it('a result generated through the home form offers Re-roast', async () => {
+    expect(await stage({ source: 'form' })).toContain(LABEL);
+  });
+
+  it('a /r/<id> link-open view (shared or self-healed) does NOT, even if a handler is passed', async () => {
+    const html = await stage({ source: 'link' });
+    expect(html).not.toContain(LABEL);
+    // ...and the loop CTA is still there.
+    expect(html).toContain('Roast another');
+  });
+
+  it('the link-open view differs from the form view only by the Re-roast row', async () => {
+    const form = await stage({ source: 'form' });
+    const link = await stage({ source: 'link' });
+    expect(link).toBe(await stage({ source: 'link', onReroast: undefined }));
+    expect(form.replace(/<div class="mt-3 flex[^]*?<\/div>/, '')).toBe(link);
+  });
+});
+
 describe('RoastApp re-roast action', () => {
   async function app(props: Record<string, unknown>): Promise<string> {
     const { RoastApp } = await import('@/components/RoastApp');
@@ -80,9 +121,12 @@ describe('RoastApp re-roast action', () => {
     expect(await app({ showcase: fakeResult() })).not.toContain(LABEL);
   });
 
-  it('appears when a result is shown (e.g. someone opens their /r/<id> link)', async () => {
+  it('does NOT appear when someone opens a /r/<id> link (shared card)', async () => {
     const html = await app({ initialResult: fakeResult(), initialUrl: 'stripe.com' });
-    expect(html).toContain(LABEL);
+    expect(html).not.toContain(LABEL);
+    // The shared-card view still carries the viral loop.
+    expect(html).toContain('Roast yours');
+    expect(html).toContain('Copy link');
   });
 });
 

@@ -124,6 +124,10 @@ scores every site near zero.
 
 - **Cache** — per-URL, 90-day TTL, memory LRU over an atomic on-disk store, so a
   viral link keeps resolving across restarts and costs nothing to re-serve.
+  Each cached result also leaves a permanent id -> URL pointer (`roast:u:<id>`,
+  no TTL), so a `/r/<id>` link whose result has expired regenerates itself on
+  open (a normal roast, through the usual SSRF guard / rate limit / spend cap)
+  instead of dying.
 - **Rate limit** — 10/min and 60/hr per IP, sliding windows. Rejected requests
   are not recorded, so hammering cannot extend the penalty.
 - **Spend cap** — `DAILY_LLM_USD_CAP`, metered from the real per-generation

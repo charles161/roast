@@ -1,5 +1,5 @@
 /** The whole server-side pipeline: URL -> cached or freshly generated result. */
-import { cacheGet, cacheSet, idForUrl } from './cache';
+import { backfillUrl, cacheGet, cacheSet, idForUrl } from './cache';
 import { recordRoast } from './counter';
 import { currentCta, currentHeadline, currentSubhead, extractFacts, hasEnoughContent } from './extract';
 import { fetchPage, FetchPageError } from './fetchPage';
@@ -29,7 +29,11 @@ export class CappedError extends Error {
 }
 
 export async function getCached(id: string): Promise<RoastResult | null> {
-  return cacheGet<RoastResult>(id);
+  const hit = await cacheGet<RoastResult>(id);
+  // Results cached before durable pointers existed get one when next served, so
+  // their /r/<id> link can self-heal too. Deduped per instance; never throws.
+  if (hit) await backfillUrl(hit);
+  return hit;
 }
 
 const JEV_MODEL = () => process.env.JEV_MODEL || 'typesafe-ai/jev-1.14.0';
@@ -53,7 +57,10 @@ export async function roastUrl(
 
   if (!opts.fresh) {
     const hit = await cacheGet<RoastResult>(id);
-    if (hit) return { result: hit, cached: true, costUsd: 0 };
+    if (hit) {
+      await backfillUrl(hit);
+      return { result: hit, cached: true, costUsd: 0 };
+    }
   }
 
   // Spend cap: serve cache only. Checked before the fetch so we don't
