@@ -45,6 +45,15 @@ body {
   color: var(--color-ink);
 }
 
+/* Modern browsers default native buttons to the arrow cursor. A tool with this
+   many click targets should always show the hand on anything clickable. */
+button:not(:disabled),
+[role='button']:not([aria-disabled='true']),
+label[for],
+summary {
+  cursor: pointer;
+}
+
 /* The structural grid: hairlines, never shadows. */
 .rule { border-top: 1px solid var(--color-line); }
 .rule-l { border-left: 1px solid var(--color-line); }
