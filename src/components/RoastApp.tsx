@@ -140,7 +140,6 @@ export function RoastApp({
   const [expiredOpen, setExpiredOpen] = useState(expiredShare);
   const inputRef = useRef<HTMLInputElement>(null);
   const loadingRef = useRef<HTMLDivElement>(null);
-  const resultRef = useRef<HTMLDivElement>(null);
   const healed = useRef(false);
 
   // Client-only: load the viewer's own recent roasts after mount (keeps SSR
@@ -219,9 +218,9 @@ export function RoastApp({
       );
       // Put the shareable id in the URL without a reload, so the link is copyable.
       window.history.replaceState(null, '', `/r/${r.id}`);
-      requestAnimationFrame(() =>
-        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
-      );
+      // No scroll here: ResultView scrolls itself into view once it has actually
+      // rendered. A rAF here fires before React commits the result, so it raced
+      // the render and left the page at the top.
     } catch {
       setError('Network hiccup. Try that again.');
     } finally {
@@ -411,7 +410,7 @@ export function RoastApp({
 
       <div ref={loadingRef}>{loading ? <Loading /> : null}</div>
 
-      <div ref={resultRef} className="scroll-mt-6">
+      <div>
         {!loading && result ? (
           <div className="mt-12">
             <ResultStage

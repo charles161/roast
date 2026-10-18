@@ -8,6 +8,8 @@ import { RoastAnother, ShareBar } from './ShareBar';
 import { FixPrompt } from './FixPrompt';
 import { appCheekySubhead } from '@/lib/appState';
 import { Mark } from './Logo';
+import { revealKey } from '@/lib/reveal';
+import { useRevealOnResult } from './useRevealOnResult';
 
 /** Reveal choreography, in ms. One place, so the beats stay in order. */
 const T = {
@@ -220,6 +222,9 @@ export function ResultView({
   onReroast?: () => void;
 }) {
   const glowRef = useRef<HTMLDivElement>(null);
+  // A result just rendered (fresh roast, opened /r/<id> link, self-heal, or
+  // Re-roast): glide to it once, so the visitor sees the roast landed.
+  const rootRef = useRevealOnResult<HTMLDivElement>(revealKey(r));
   // Old cached results predate the field; treat a missing flag as a landing page.
   const isLanding = r.isLandingPage !== false;
 
@@ -241,7 +246,9 @@ export function ResultView({
   }, []);
 
   return (
-    <div>
+    // scroll-mt-6: a small breathing gap above the card when it is scrolled into
+    // view (there is no sticky header to clear).
+    <div ref={rootRef} data-result-root className="scroll-mt-6">
       <ShareCard r={r} />
 
       <div className="cut-in" style={delay(T.share)}>
