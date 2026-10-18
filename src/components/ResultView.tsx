@@ -186,14 +186,38 @@ function Section({
   );
 }
 
+/**
+ * Secondary, deliberately quiet: the page-owner's path (change the page, get a
+ * fresh score) must not compete with the share buttons the viral loop runs on.
+ * Same chip styling as the homepage "Try" examples.
+ */
+function ReroastRow({ onReroast }: { onReroast: () => void }) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-micro text-mute">
+      <span>Changed the page? Get a fresh score.</span>
+      <button
+        type="button"
+        onClick={onReroast}
+        title="Roast this page again for a fresh score"
+        className="border border-line px-2.5 py-1 text-chalk/80 transition-colors hover:border-acid hover:text-acid"
+      >
+        Re-roast <span aria-hidden>&#8635;</span>
+      </button>
+    </div>
+  );
+}
+
 export function ResultView({
   r,
   shareUrl,
   onAnother,
+  onReroast,
 }: {
   r: RoastResult;
   shareUrl: string;
   onAnother?: () => void;
+  /** Re-submit this result's URL for a fresh (uncached) roast. Omit to hide the action. */
+  onReroast?: () => void;
 }) {
   const glowRef = useRef<HTMLDivElement>(null);
   // Old cached results predate the field; treat a missing flag as a landing page.
@@ -222,6 +246,7 @@ export function ResultView({
 
       <div className="cut-in" style={delay(T.share)}>
         <ShareBar r={r} shareUrl={shareUrl} onAnother={onAnother} />
+        {onReroast ? <ReroastRow onReroast={onReroast} /> : null}
       </div>
 
       <Section index="01" title="The roast" delayMs={T.tail}>

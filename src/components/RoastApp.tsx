@@ -22,6 +22,11 @@ const LOADING_LINES = [
 
 const EXAMPLES = ['stripe.com', 'linear.app', 'vercel.com', 'notion.so'];
 
+/** POST body for /api/roast. `fresh` is only ever sent when true, so the default body is unchanged. */
+export function roastRequestBody(url: string, fresh = false): string {
+  return JSON.stringify(fresh ? { url, fresh: true } : { url });
+}
+
 /** A terminal log, not a spinner. The wait is part of the voice. */
 function Loading() {
   const [n, setN] = useState(1);
@@ -91,10 +96,10 @@ export function RoastApp({
     if (result) track('result_viewed', { id: result.id, overall: result.score.overall });
   }, [result]);
 
-  async function run(raw: string) {
+  async function run(raw: string, fresh = false) {
     const target = raw.trim();
     if (!target || loading) return;
-    track('scan_submitted', { inputLen: target.length });
+    track('scan_submitted', fresh ? { inputLen: target.length, fresh: true } : { inputLen: target.length });
     setExpiredOpen(false);
     setLoading(true);
     setError(null);
@@ -107,7 +112,7 @@ export function RoastApp({
       const res = await fetch('/api/roast', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url: target }),
+        body: roastRequestBody(target, fresh),
       });
       const data: unknown = await res.json();
       if (!res.ok) {
@@ -173,7 +178,12 @@ export function RoastApp({
           </RoastAnother>
         </nav>
         <div className="mt-8">
-          <ResultView r={result} shareUrl={shareUrl} onAnother={another} />
+          <ResultView
+            r={result}
+            shareUrl={shareUrl}
+            onAnother={another}
+            onReroast={() => void run(result.url, true)}
+          />
         </div>
       </main>
     );
@@ -322,7 +332,12 @@ export function RoastApp({
       <div ref={resultRef} className="scroll-mt-6">
         {!loading && result ? (
           <div className="mt-12">
-            <ResultView r={result} shareUrl={shareUrl} onAnother={another} />
+            <ResultView
+              r={result}
+              shareUrl={shareUrl}
+              onAnother={another}
+              onReroast={() => void run(result.url, true)}
+            />
           </div>
         ) : null}
       </div>

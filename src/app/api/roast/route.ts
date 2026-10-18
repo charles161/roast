@@ -27,9 +27,13 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   let raw: string;
+  let fresh = false;
   try {
-    const body = (await req.json()) as { url?: unknown };
+    const body = (await req.json()) as { url?: unknown; fresh?: unknown };
     raw = typeof body?.url === 'string' ? body.url : '';
+    // Explicit re-roast. Only the JSON boolean `true` counts — "yes", 1, "true"
+    // and friends are a normal (cache-friendly) roast.
+    fresh = body?.fresh === true;
   } catch {
     return fail('bad_url', 'Send a JSON body with a url.', 400);
   }
@@ -50,7 +54,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { result, cached, costUsd } = await roastUrl(normalized);
+    const { result, cached, costUsd } = await roastUrl(normalized, { fresh });
     await captureServer('roast_completed', {
       displayUrl: result.displayUrl,
       overall: result.score.overall,

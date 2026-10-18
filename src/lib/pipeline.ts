@@ -35,16 +35,30 @@ export async function getCached(id: string): Promise<RoastResult | null> {
 const JEV_MODEL = () => process.env.JEV_MODEL || 'typesafe-ai/jev-1.14.0';
 const ROAST_MODEL = () => process.env.ROAST_MODEL || 'anthropic/claude-haiku-5.5';
 
+export type RoastOptions = {
+  /**
+   * Explicit re-roast: skip the cache-hit short-circuit and regenerate, then
+   * overwrite the SAME id so the existing /r/<id> share link shows the new roast.
+   * Default (absent/false) is "a cache hit wins" — that is the cost protection
+   * when many people roast the same popular URL. Fresh still obeys the spend cap.
+   */
+  fresh?: boolean;
+};
+
 export async function roastUrl(
   normalizedUrl: string,
+  opts: RoastOptions = {},
 ): Promise<{ result: RoastResult; cached: boolean; costUsd: number }> {
   const id = idForUrl(normalizedUrl);
 
-  const hit = await cacheGet<RoastResult>(id);
-  if (hit) return { result: hit, cached: true, costUsd: 0 };
+  if (!opts.fresh) {
+    const hit = await cacheGet<RoastResult>(id);
+    if (hit) return { result: hit, cached: true, costUsd: 0 };
+  }
 
   // Spend cap: serve cache only. Checked before the fetch so we don't
-  // hammer other people's sites for nothing either.
+  // hammer other people's sites for nothing either. A fresh re-roast is not
+  // exempt: it spends real money like any other miss.
   if (!(await hasBudget())) throw new CappedError();
 
   const page = await fetchPage(normalizedUrl);
