@@ -1,16 +1,21 @@
 /* ─────────────────────────────────────────────────────────────────────────────
    ROAST LENS — a page being scanned, in plain Canvas 2D.
 
-   A faithful TypeScript port of the owner-approved mockup engine (type-A.html /
-   _src/lens.js). No dependencies, no WebGL, no blur: one wireframe "landing page"
-   floats in perspective, swings slowly on a turntable, and a laser sheet sweeps
-   down it. Blocks flash as the beam crosses them, then settle into the verdict
-   colour (rough / mid / sharp) and drop a rubric callout. NO fabricated scores or
+   A dependency-free pseudo-3D engine (no WebGL, no blur). One wireframe
+   "landing page" floats in perspective, drifts on a slow, gentle orbit, and a
+   laser sheet sweeps down it. Blocks flash acid as the beam crosses them, then
+   settle into the verdict colour (rough / mid / sharp) and reveal a rubric
+   callout whose leader line draws itself in. When the sweep completes the whole
+   page resolves with a soft pulse, then it loops. NO fabricated scores or
    numbers are ever shown — only the rubric category names (HERO / SPECIFICS /
    PROOF / CRAFT / CTA) and their qualitative verdict word.
 
+   Rendering order is a true back-to-front painter's pass: the background board
+   is painted first as the backdrop, then every page block is depth-sorted and
+   painted over it, so no element is ever occluded or culled at any angle.
+
    Everything rendered is a pure function of time, so the reduced-motion frame is
-   just one render() call with no loop.
+   just one render() call with no loop — a fully-graded, resolved still.
 
      const lens = mountLens(canvas, { mode: 'ambient' | 'scanning' });
      lens.setMode('scanning');   // loading visual
@@ -76,8 +81,19 @@ export const LENS_W = 300;
 export const LENS_H = 520;
 export const LENS_PAD = 34;
 const D = 900;
-const STATIC_POSE_T = 1.15;
-const STATIC_PHASE = 2.15; // reduced-motion frame
+
+/* Reduced-motion still: a calm, fully-graded pose. */
+const STATIC_YAW = -0.3;
+const STATIC_PITCH = 0.12;
+
+/* Calm oscillating orbit. Base angle + a gentle, detuned two-wave drift so the
+   motion reads organic and expensive rather than a rigid metronome. Kept small
+   so the page stays legible and face-on. */
+const YAW_BASE = -0.33;
+const YAW_AMP = 0.17;
+const PITCH_BASE = 0.12;
+const PITCH_AMP = 0.05;
+const ORBIT_W = 0.35; // rad/s of the primary sway (ambient); ~18s period
 
 /* ── pure helpers (unit-tested) ─────────────────────────────────────────────── */
 export function mix(a: RGB, b: RGB, t: number): RGB {
@@ -107,6 +123,12 @@ export function easeOut(t: number): number {
   return 1 - t * t * t;
 }
 
+/** Symmetric ease-in-out (smoothstep-like), used for callout reveals. */
+export function easeInOut(t: number): number {
+  t = clamp(t, 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
 export function hash(v: number): number {
   v = Math.sin(v * 127.1 + 311.7) * 43758.5453;
   return v - Math.floor(v);
@@ -120,6 +142,20 @@ export function beamY(u: number, h = LENS_H, pad = LENS_PAD): number {
 /** Which lens mode a given loading state maps to. */
 export function lensModeForLoading(loading: boolean): LensMode {
   return loading ? 'scanning' : 'ambient';
+}
+
+/**
+ * Depth (camera-space z) of a page-space point after the yaw→pitch rotation —
+ * the exact quantity the renderer sorts on. Larger is nearer the camera. Pure
+ * and unit-tested so the painter's-order guarantee can be proven at every angle.
+ */
+export function projectZ(x: number, y: number, z: number, yaw: number, pitch: number): number {
+  const cY = Math.cos(yaw);
+  const sY = Math.sin(yaw);
+  const cP = Math.cos(pitch);
+  const sP = Math.sin(pitch);
+  const z1 = -x * sY + z * cY;
+  return y * sP + z1 * cP;
 }
 
 /* ── the page, as blocks (built once, pure) ─────────────────────────────────── */
@@ -226,10 +262,51 @@ for (let n = 0; n < N; n++) {
   b.v = b.g ? VERDICT[b.g] : null;
 }
 
+/** Number of drawable boxes in the scene (background board + page blocks). */
+export const BOX_COUNT = N;
+
+/**
+ * Each box's depth-sort centroid in page space: [cx, cy, z + d/2]. Exposed so a
+ * test can reconstruct the exact quantity `paintOrder` sorts on and prove the
+ * back-to-front ordering holds at every camera angle.
+ */
+export const BOX_CENTROIDS: Array<[number, number, number]> = BOXES.map((b) => [
+  b.cx,
+  b.cy,
+  b.z + b.d / 2,
+]);
+
+/* The board (frame) boxes are the backdrop — always painted first. Everything
+   else sits at z >= 0 (on or in front of the board face) and is depth-sorted. */
+const BACKDROP: Box[] = BOXES.filter((b) => b.frame);
+const DRAW_ORDER: Box[] = BOXES.filter((b) => !b.frame);
+
+/**
+ * Back-to-front paint order of every box at a given camera pose: backdrop
+ * boards first, then the remaining blocks by ascending centroid depth. Returns
+ * indices into the scene. Pure (steady-state scale), so a test can sweep every
+ * angle and assert nothing is dropped and nothing sorts in front of the board.
+ */
+export function paintOrder(yaw: number, pitch: number): number[] {
+  const back: number[] = [];
+  const front: number[] = [];
+  for (let i = 0; i < N; i++) {
+    const b = BOXES[i];
+    if (b.frame) back.push(i);
+    else front.push(i);
+  }
+  front.sort(
+    (a, b) =>
+      projectZ(BOXES[a].cx, BOXES[a].cy, BOXES[a].z + BOXES[a].d / 2, yaw, pitch) -
+      projectZ(BOXES[b].cx, BOXES[b].cy, BOXES[b].z + BOXES[b].d / 2, yaw, pitch),
+  );
+  return back.concat(front);
+}
+
 /* dot lattice that rises as the beam passes — only in the margins */
 const DOTS: Array<[number, number, number]> = [];
-for (let gy = 8; gy < LENS_H; gy += 13) {
-  for (let gx = 8; gx < LENS_W; gx += 13) {
+for (let gy = 8; gy < LENS_H; gy += 14) {
+  for (let gx = 8; gx < LENS_W; gx += 14) {
     let hit = false;
     for (let k = 1; k < N; k++) {
       const q = BOXES[k];
@@ -242,13 +319,13 @@ for (let gy = 8; gy < LENS_H; gy += 13) {
   }
 }
 
-/* depth dust */
+/* depth dust — sparse ambient motes */
 const DUST: Array<[number, number, number, number]> = [];
-for (let m = 0; m < 90; m++) {
+for (let m = 0; m < 56; m++) {
   DUST.push([
-    (hash(m) - 0.5) * 700,
-    (hash(m + 91) - 0.5) * 700,
-    (hash(m + 187) - 0.3) * 420,
+    (hash(m) - 0.5) * 760,
+    (hash(m + 91) - 0.5) * 760,
+    (hash(m + 187) - 0.3) * 440,
     hash(m + 33),
   ]);
 }
@@ -270,27 +347,59 @@ const EDGES: Array<[number, number]> = [
 const BACK = [0, 1, 2, 3];
 const FRONT = [4, 5, 6, 7];
 const LINKS = [8, 9, 10, 11];
+const EDGE_SETS = [BACK, LINKS, FRONT];
+const EDGE_MUL = [0.5, 0.65, 1];
 
-function hull(px: number[], py: number[]): number[] {
-  // monotone chain over 8 projected corners -> index list
-  const idx = [0, 1, 2, 3, 4, 5, 6, 7].sort((a, b) => px[a] - px[b] || py[a] - py[b]);
-  const cr = (o: number, a: number, b: number) =>
-    (px[a] - px[o]) * (py[b] - py[o]) - (py[a] - py[o]) * (px[b] - px[o]);
-  const lo: number[] = [];
-  const up: number[] = [];
+/* ── non-allocating convex hull over 8 projected corners ────────────────────── */
+const _o8: number[] = [0, 1, 2, 3, 4, 5, 6, 7];
+const _lo: number[] = new Array(10);
+const _up: number[] = new Array(10);
+const _ring: number[] = new Array(10);
+let _spx: number[] = [];
+let _spy: number[] = [];
+function _cmp8(a: number, b: number): number {
+  return _spx[a] - _spx[b] || _spy[a] - _spy[b];
+}
+function _cross(o: number, a: number, b: number): number {
+  return (_spx[a] - _spx[o]) * (_spy[b] - _spy[o]) - (_spy[a] - _spy[o]) * (_spx[b] - _spx[o]);
+}
+/** Monotone-chain hull of the 8 corners -> fills `_ring`, returns its length. */
+function hullInto(px: number[], py: number[]): number {
+  _spx = px;
+  _spy = py;
+  for (let i = 0; i < 8; i++) _o8[i] = i;
+  _o8.sort(_cmp8);
+  let ln = 0;
+  let un = 0;
   let i: number;
   for (i = 0; i < 8; i++) {
-    while (lo.length > 1 && cr(lo[lo.length - 2], lo[lo.length - 1], idx[i]) <= 0) lo.pop();
-    lo.push(idx[i]);
+    while (ln > 1 && _cross(_lo[ln - 2], _lo[ln - 1], _o8[i]) <= 0) ln--;
+    _lo[ln++] = _o8[i];
   }
   for (i = 7; i >= 0; i--) {
-    while (up.length > 1 && cr(up[up.length - 2], up[up.length - 1], idx[i]) <= 0) up.pop();
-    up.push(idx[i]);
+    while (un > 1 && _cross(_up[un - 2], _up[un - 1], _o8[i]) <= 0) un--;
+    _up[un++] = _o8[i];
   }
-  lo.pop();
-  up.pop();
-  return lo.concat(up);
+  let n = 0;
+  for (i = 0; i < ln - 1; i++) _ring[n++] = _lo[i];
+  for (i = 0; i < un - 1; i++) _ring[n++] = _up[i];
+  return n;
 }
+function _depthCmp(a: Box, b: Box): number {
+  return a.depth - b.depth;
+}
+
+/** Pre-allocated callout records (reused every frame — no hot-loop garbage). */
+interface Tag {
+  v: Verdict;
+  a: number;
+  reveal: number;
+  ax: number;
+  ay: number;
+  lf: boolean;
+}
+const TAGS: Tag[] = [];
+for (let i = 0; i < N; i++) TAGS.push({ v: VERDICT.hero, a: 0, reveal: 0, ax: 0, ay: 0, lf: false });
 
 /** CanvasRenderingContext2D plus the letterSpacing property (not in every lib.dom). */
 type Ctx2D = CanvasRenderingContext2D & { letterSpacing?: string };
@@ -312,14 +421,14 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
   let t0 = performance.now() / 1000;
   let modeT0 = 0.9;
   let fadeT0 = -9;
-  let cY = 0;
-  let sY = 0;
-  let cP = 0;
-  let sP = 0;
   let F = 0;
   let CX = 0;
   let CY = 0;
   let S = 0;
+  let cY = 1;
+  let sY = 0;
+  let cP = 1;
+  let sP = 0;
   let px = 0;
   let py = 0;
   let pz = 0;
@@ -352,11 +461,12 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
     const r = canvas.getBoundingClientRect();
     w = Math.max(2, r.width);
     h = Math.max(2, r.height);
+    // DPR-aware backing store so every 1px line is crisp on retina.
     dpr = Math.min(root.devicePixelRatio || 1, 2);
     canvas.width = Math.round(w * dpr);
     canvas.height = Math.round(h * dpr);
     ctx!.setTransform(dpr, 0, 0, dpr, 0, 0);
-    S = Math.min(h / (LENS_H * 1.26), w / (LENS_W * 1.75));
+    S = Math.min(h / (LENS_H * 1.34), w / (LENS_W * 1.82));
     if (reduced() || frozen !== null) draw(nowT());
   }
 
@@ -392,32 +502,176 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
     ctx!.fillText(s, x, y);
   }
 
+  /** Shrink letter-spacing then size until `s` fits `maxW`; returns [size, ls]. */
+  function fitFont(s: string, maxW: number, size0: number, weight: number, ls0: number): [number, number] {
+    let size = size0;
+    let ls = ls0;
+    for (let guard = 0; guard < 40; guard++) {
+      ctx!.font = weight + ' ' + size + 'px ' + FONT;
+      if (hasLS) ctx!.letterSpacing = ls + 'px';
+      if (ctx!.measureText(s).width <= maxW) break;
+      if (ls > 0) ls = Math.max(0, ls - 0.4);
+      else if (size > 8) size -= 0.5;
+      else break;
+    }
+    return [size, ls];
+  }
+
+  /* frame-state (set each draw, read by drawBox) */
+  let _cur: ModeCfg = MODES[mode];
+  let _p = -1;
+  let _cycle = -1;
+  let _env = 0;
+  let _fade = 1;
+  let _enterOn = false;
+  let _isStatic = false;
+  let _resolve = 0;
+  let _T = 0;
+
+  /** Paint one wireframe box: occluding face, verdict wash, three edge tiers. */
+  function drawBox(bo: Box): void {
+    const e2 = bo.e;
+    if (e2 <= 0.003) return;
+    const x0 = bo.x - LENS_W / 2;
+    const x1 = x0 + bo.w;
+    const y0 = bo.y - LENS_H / 2;
+    const y1 = y0 + bo.h;
+    const z0 = bo.z * e2;
+    const z1 = (bo.z + bo.d) * e2;
+    for (let ci = 0; ci < 8; ci++) {
+      P(ci & 1 ? x1 : x0, ci & 2 ? y1 : y0, ci & 4 ? z1 : z0);
+      bo.sx[ci] = px;
+      bo.sy[ci] = py;
+      bo.sz[ci] = pz;
+    }
+    /* lit state — stateless: time since the beam crossed this block. In the
+       reduced-motion still every graded block is simply fully resolved. */
+    let lit = 0;
+    let flash = 0;
+    let dtHit = -1;
+    if (_isStatic) {
+      if (bo.v && !bo.frame) lit = 1;
+    } else if (_p >= 0 && !bo.frame) {
+      const hi = bo.f * _cur.sweep;
+      if (_p >= hi) dtHit = _p - hi;
+      else if (_cycle > 0) dtHit = _p + _cur.P - hi;
+      if (dtHit >= 0) {
+        const dur = bo.fd * _cur.sweep;
+        flash = dtHit <= dur ? 1 : Math.exp(-(dtHit - dur) / 0.4);
+        lit = dtHit < _cur.hold ? 1 : Math.exp(-(dtHit - _cur.hold) / _cur.tau);
+        flash *= _fade;
+        lit *= _fade;
+      }
+    }
+    const depthK = 0.62 + 0.38 * clamp((bo.depth + 120) / 240, 0, 1);
+    const vc = bo.v ? bo.v[0] : ACID;
+    // col = mix(mix(CHALK, vc, lit), FLASH, flash*0.75) — inlined, no array alloc.
+    const f2 = flash * 0.75;
+    const cr = CHALK[0] + (vc[0] - CHALK[0]) * lit;
+    const cg = CHALK[1] + (vc[1] - CHALK[1]) * lit;
+    const cb = CHALK[2] + (vc[2] - CHALK[2]) * lit;
+    const r = (cr + (FLASH[0] - cr) * f2) | 0;
+    const g = (cg + (FLASH[1] - cg) * f2) | 0;
+    const b = (cb + (FLASH[2] - cb) * f2) | 0;
+    // graded edges brighten briefly as the page resolves
+    const settle = bo.v ? 1 + 0.5 * _resolve * lit : 1;
+    const enterK = _enterOn ? clamp(e2 * 1.4, 0, 1) : 1;
+    const edgeA =
+      (0.36 + 0.58 * Math.max(lit * (bo.v ? 0.95 : 0.55), flash)) * depthK * enterK * settle;
+
+    const n = hullInto(bo.sx, bo.sy);
+    ctx!.beginPath();
+    ctx!.moveTo(bo.sx[_ring[0]], bo.sy[_ring[0]]);
+    for (let ri = 1; ri < n; ri++) ctx!.lineTo(bo.sx[_ring[ri]], bo.sy[_ring[ri]]);
+    ctx!.closePath();
+    ctx!.fillStyle = 'rgba(9,9,9,0.92)';
+    ctx!.fill();
+    const big = bo.w * bo.h > 9000 ? 0.4 : 1; // large blocks get a lighter wash
+    const tint = (0.035 + (0.12 * lit * (bo.v ? 1 : 0.4) + 0.12 * flash) * big) * enterK;
+    ctx!.fillStyle = 'rgba(' + r + ',' + g + ',' + b + ',' + clamp(tint, 0, 1).toFixed(3) + ')';
+    ctx!.fill();
+
+    const colA = r + ',' + g + ',' + b + ',';
+    for (let si = 0; si < 3; si++) {
+      const set = EDGE_SETS[si];
+      ctx!.strokeStyle = 'rgba(' + colA + clamp(edgeA * EDGE_MUL[si], 0, 1).toFixed(3) + ')';
+      ctx!.lineWidth = si === 2 ? 1 : 0.75;
+      ctx!.beginPath();
+      for (let ei = 0; ei < 4; ei++) {
+        const ed = EDGES[set[ei]];
+        ctx!.moveTo(bo.sx[ed[0]], bo.sy[ed[0]]);
+        ctx!.lineTo(bo.sx[ed[1]], bo.sy[ed[1]]);
+      }
+      ctx!.stroke();
+    }
+
+    if (bo.tag && bo.v && lit > 0.04) {
+      const lf = bo.tag === 'left';
+      const reveal = _isStatic ? 1 : easeInOut(clamp(dtHit / 0.42, 0, 1));
+      const t = TAGS[_tagN++];
+      t.v = bo.v;
+      t.a = Math.min(1, lit * 1.4);
+      t.reveal = reveal;
+      t.ax = bo.sx[lf ? 4 : 5];
+      t.ay = bo.sy[lf ? 4 : 5];
+      t.lf = lf;
+    }
+  }
+  let _tagN = 0;
+
   function draw(T: number): void {
     const cur = MODES[mode];
+    _cur = cur;
+    _T = T;
     const isStatic = reduced();
-    const q = isStatic ? STATIC_PHASE : T - modeT0;
+    _isStatic = isStatic;
+    // The still has no sweep: grading is forced on per-block, no beam/marker.
+    const q = isStatic ? -1 : T - modeT0;
     const p = q < 0 ? -1 : q % cur.P;
     const cycle = q < 0 ? -1 : Math.floor(q / cur.P);
+    _p = p;
+    _cycle = cycle;
     const fade = isStatic ? 1 : clamp((T - fadeT0) / 0.6, 0, 1);
-    const poseT = isStatic ? STATIC_POSE_T : T;
+    _fade = fade;
     const enterOn = !isStatic && T < 3.4;
+    _enterOn = enterOn;
 
-    yaw = -0.7 + 0.24 * Math.sin(poseT * 0.23 * cur.swing);
-    pitch = 0.2 + 0.05 * Math.sin(poseT * 0.17 * cur.swing + 1);
+    /* camera — a calm, gently detuned orbit (static freezes to a fixed pose) */
+    if (isStatic) {
+      yaw = STATIC_YAW;
+      pitch = STATIC_PITCH;
+    } else {
+      const s1 = T * ORBIT_W * cur.swing;
+      yaw = YAW_BASE + YAW_AMP * (0.82 * Math.sin(s1) + 0.18 * Math.sin(s1 * 0.47 + 1.7));
+      pitch = PITCH_BASE + PITCH_AMP * Math.sin(s1 * 0.63 + 0.5);
+    }
     cY = Math.cos(yaw);
     sY = Math.sin(yaw);
     cP = Math.cos(pitch);
     sP = Math.sin(pitch);
     S = S || 1;
-    F = D * S * 1.0;
-    CX = w * 0.5 + 8;
-    CY = h * 0.5 - 12 + (isStatic ? 0 : Math.sin(T * 0.5) * 4);
+    F = D * S;
+    CX = w * 0.5 + 6;
+    CY = h * 0.5 - 10 + (isStatic ? 0 : Math.sin(T * 0.45) * 3.5);
 
     ctx!.clearRect(0, 0, w, h);
 
     const u = p >= 0 && p <= cur.sweep ? p / cur.sweep : -1; // beam progress 0..1
     const by = u < 0 ? 0 : -LENS_PAD + (LENS_H + LENS_PAD * 2) * u - LENS_H / 2; // centred page coords
-    const env = u < 0 ? 0 : Math.min(1, u / 0.05, (1 - u) / 0.06) * cur.beam * fade;
+    const env = u < 0 ? 0 : Math.min(1, u / 0.06, (1 - u) / 0.06) * cur.beam * fade;
+    _env = env;
+
+    /* the "complete" beat: a soft resolve pulse as the sweep clears the page */
+    let resolve = 0;
+    if (!isStatic && p >= 0) {
+      const over = p - cur.sweep;
+      if (over >= 0 && over < 0.95) {
+        resolve = clamp(over / 0.08, 0, 1) * Math.exp(-Math.max(0, over - 0.08) / 0.4) * fade;
+      }
+    } else if (isStatic) {
+      resolve = 0.65; // the still sits inside a gentle, steady resolve glow
+    }
+    _resolve = resolve;
 
     /* floor grid — a platform under the page */
     const fy = LENS_H / 2 + 44;
@@ -425,7 +679,7 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
     let a: number;
     ctx!.lineWidth = 1;
     for (gi = -6; gi <= 6; gi++) {
-      a = 0.11 * (1 - Math.abs(gi) / 7);
+      a = 0.09 * (1 - Math.abs(gi) / 7);
       ctx!.strokeStyle = rgba(CHALK, a);
       ctx!.beginPath();
       P(gi * 50, fy, -300);
@@ -444,31 +698,75 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
       const d = DUST[gi];
       P(d[0], d[1] + Math.sin(T * 0.3 + d[3] * 6) * 5, d[2]);
       a =
-        (0.1 + 0.3 * d[3]) *
+        (0.08 + 0.26 * d[3]) *
         (0.55 + 0.45 * Math.sin(T * 0.8 + d[3] * 40)) *
         clamp((pz + 260) / 380, 0.25, 1);
       ctx!.fillStyle = rgba(CHALK, a);
-      ctx!.fillRect(px, py, 1.4, 1.4);
+      ctx!.fillRect(px, py, 1.3, 1.3);
     }
 
-    /* dot lattice — base layer in one path, active band in tiers */
+    /* depth sort: backdrop board(s) stay behind; page blocks by centroid depth */
+    let bi: number;
+    for (bi = 0; bi < N; bi++) {
+      const bb = BOXES[bi];
+      bb.e = enterOn ? easeOut((T - bb.delay) / 1.15) : 1;
+      P(bb.cx, bb.cy, (bb.z + bb.d / 2) * bb.e);
+      bb.depth = pz;
+    }
+
+    /* 1) the board, painted first as the backdrop */
+    for (bi = 0; bi < BACKDROP.length; bi++) drawBox(BACKDROP[bi]);
+
+    /* 2) surface detail that lives ON the board, over its face */
+    drawSurface(by, u, env);
+
+    /* 3) page blocks, strictly back-to-front */
+    DRAW_ORDER.sort(_depthCmp);
+    _tagN = 0;
+    for (bi = 0; bi < DRAW_ORDER.length; bi++) drawBox(DRAW_ORDER[bi]);
+
+    /* 4) callouts, drawing their leader lines in as the scan reaches them */
+    drawCallouts();
+
+    /* 5) the resolve glow sits in front of the page, behind the HUD */
+    if (resolve > 0.01) {
+      P(0, 0, 10);
+      const gr = ctx!.createRadialGradient(px, py, 0, px, py, Math.max(w, h) * 0.5);
+      gr.addColorStop(0, rgba(ACID, 0.1 * resolve));
+      gr.addColorStop(0.55, rgba(ACID, 0.03 * resolve));
+      gr.addColorStop(1, rgba(ACID, 0));
+      ctx!.fillStyle = gr;
+      ctx!.fillRect(0, 0, w, h);
+    }
+
+    /* 6) the laser sheet + sparks, in front of everything it crosses */
+    if (env > 0.01) drawBeam(by, env, cur);
+
+    hud(T, p, u, by, env, cur, isStatic);
+  }
+
+  /* dot lattice + scan trail, drawn onto the board surface */
+  function drawSurface(by: number, u: number, env: number): void {
     const BAND = 64;
-    const near: number[] = [];
-    ctx!.fillStyle = rgba(CHALK, 0.14);
+    let gi: number;
+    /* base lattice in one path */
+    ctx!.fillStyle = rgba(CHALK, 0.12);
     ctx!.beginPath();
+    _nearN = 0;
     for (gi = 0; gi < DOTS.length; gi++) {
       const dt = DOTS[gi];
       const dy = u < 0 ? 999 : dt[1] - by;
       if (dy > -BAND * 1.6 && dy < BAND * 0.7) {
-        near.push(gi);
+        _near[_nearN++] = gi;
         continue;
       }
       P(dt[0], dt[1], 0);
       ctx!.rect(px - 0.7, py - 0.7, 1.4, 1.4);
     }
     ctx!.fill();
-    for (gi = 0; gi < near.length; gi++) {
-      const nd = DOTS[near[gi]];
+    /* active band rises toward the beam */
+    for (gi = 0; gi < _nearN; gi++) {
+      const nd = DOTS[_near[gi]];
       const ddy = nd[1] - by;
       const pk = Math.exp(-(ddy * ddy) / (2 * 15 * 15));
       const tail = ddy < 0 ? Math.exp(ddy / 58) * 0.35 : 0;
@@ -478,8 +776,7 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
       ctx!.fillStyle = rgba(k2 > 0.5 ? FLASH : ACID, 0.1 + 0.9 * k2);
       ctx!.fillRect(px - sz / 2, py - sz / 2, sz, sz);
     }
-
-    /* scan trail painted on the page plane, under the blocks */
+    /* scan trail — a soft gradient wash just behind the beam, on the page plane */
     if (env > 0.01) {
       P(-LENS_W / 2, by - 78, 0);
       const ax = px;
@@ -495,7 +792,7 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
       const dy2 = py;
       const g = ctx!.createLinearGradient(0, (ay + byy) / 2, 0, (cy2 + dy2) / 2);
       g.addColorStop(0, rgba(ACID, 0));
-      g.addColorStop(1, rgba(ACID, 0.13 * env));
+      g.addColorStop(1, rgba(ACID, 0.12 * env));
       ctx!.fillStyle = g;
       ctx!.beginPath();
       ctx!.moveTo(ax, ay);
@@ -505,190 +802,113 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
       ctx!.closePath();
       ctx!.fill();
     }
+  }
 
-    /* blocks, painter-sorted */
-    const order: Box[] = [];
-    let bi: number;
-    for (bi = 0; bi < N; bi++) {
-      const bb = BOXES[bi];
-      const e = enterOn ? easeOut((T - bb.delay) / 1.15) : 1;
-      bb.e = e;
-      P(bb.cx, bb.cy, (bb.z + bb.d / 2) * e);
-      bb.depth = pz;
-      order.push(bb);
-    }
-    order.sort((a1, b1) => a1.depth - b1.depth);
-
-    const tags: Array<{ v: Verdict; a: number; ax: number; ay: number; lf: boolean }> = [];
-    for (bi = 0; bi < N; bi++) {
-      const bo = order[bi];
-      const e2 = bo.e;
-      if (e2 <= 0.003) continue;
-      const x0 = bo.x - LENS_W / 2;
-      const x1 = x0 + bo.w;
-      const y0 = bo.y - LENS_H / 2;
-      const y1 = y0 + bo.h;
-      const z0 = bo.z * e2;
-      const z1 = (bo.z + bo.d) * e2;
-      for (let ci = 0; ci < 8; ci++) {
-        P(ci & 1 ? x1 : x0, ci & 2 ? y1 : y0, ci & 4 ? z1 : z0);
-        bo.sx[ci] = px;
-        bo.sy[ci] = py;
-        bo.sz[ci] = pz;
-      }
-      /* lit state — stateless: time since the beam crossed this block */
-      let dtHit = -1;
-      if (p >= 0) {
-        const hi = bo.f * cur.sweep;
-        if (p >= hi) dtHit = p - hi;
-        else if (cycle > 0) dtHit = p + cur.P - hi;
-      }
-      let lit = 0;
-      let flash = 0;
-      if (dtHit >= 0 && !bo.frame) {
-        const dur = bo.fd * cur.sweep;
-        flash = dtHit <= dur ? 1 : Math.exp(-(dtHit - dur) / 0.4);
-        lit = dtHit < cur.hold ? 1 : Math.exp(-(dtHit - cur.hold) / cur.tau);
-        if (isStatic === false) {
-          flash *= fade;
-          lit *= fade;
-        }
-      }
-      const depthK = 0.62 + 0.38 * clamp((bo.depth + 120) / 240, 0, 1);
-      const vc = bo.v ? bo.v[0] : ACID;
-      let col = mix(CHALK, vc, lit);
-      col = mix(col, FLASH, flash * 0.75);
-      const edgeA =
-        (0.36 + 0.58 * Math.max(lit * (bo.v ? 0.95 : 0.55), flash)) *
-        depthK *
-        (enterOn ? clamp(e2 * 1.4, 0, 1) : 1);
-      const ring = hull(bo.sx, bo.sy);
-
-      ctx!.beginPath();
-      ctx!.moveTo(bo.sx[ring[0]], bo.sy[ring[0]]);
-      for (let ri = 1; ri < ring.length; ri++) ctx!.lineTo(bo.sx[ring[ri]], bo.sy[ring[ri]]);
-      ctx!.closePath();
-      ctx!.fillStyle = 'rgba(10,10,10,0.9)';
-      ctx!.fill();
-      const big = bo.w * bo.h > 9000 ? 0.4 : 1; // large blocks get a lighter wash
-      const tint = 0.035 + (0.12 * lit * (bo.v ? 1 : 0.4) + 0.12 * flash) * big;
-      ctx!.fillStyle = rgba(col, tint * (enterOn ? clamp(e2 * 1.4, 0, 1) : 1));
-      ctx!.fill();
-
-      const sets = [BACK, LINKS, FRONT];
-      const mul = [0.5, 0.65, 1];
-      let si: number;
-      let ei: number;
-      for (si = 0; si < 3; si++) {
-        ctx!.strokeStyle = rgba(col, edgeA * mul[si]);
-        ctx!.lineWidth = si === 2 ? 1 : 0.8;
-        ctx!.beginPath();
-        for (ei = 0; ei < 4; ei++) {
-          const ed = EDGES[sets[si][ei]];
-          ctx!.moveTo(bo.sx[ed[0]], bo.sy[ed[0]]);
-          ctx!.lineTo(bo.sx[ed[1]], bo.sy[ed[1]]);
-        }
-        ctx!.stroke();
-      }
-      if (bo.tag && lit > 0.04 && bo.v) {
-        const lf = bo.tag === 'left';
-        tags.push({
-          v: bo.v,
-          a: Math.min(1, lit * 1.4),
-          ax: bo.sx[lf ? 4 : 5],
-          ay: bo.sy[lf ? 4 : 5],
-          lf,
-        });
-      }
-    }
-
-    /* callouts: blueprint-style elbows, label on top of the run */
-    for (let ti = 0; ti < tags.length; ti++) {
-      const tg = tags[ti];
+  function drawCallouts(): void {
+    const pad = 16;
+    for (let ti = 0; ti < _tagN; ti++) {
+      const tg = TAGS[ti];
+      const grow = tg.reveal;
+      if (grow <= 0.001) continue;
       const label = tg.v[2] + '  ';
       const verdict = tg.v[1];
       ctx!.font = '600 10px ' + FONT;
       if (hasLS) ctx!.letterSpacing = '1.4px';
       const tw = ctx!.measureText(label + verdict).width;
       const dir = tg.lf || tg.ax + 16 + tw + 30 > w - 20 ? -1 : 1;
-      const ex = tg.ax + dir * 14;
-      const ey = tg.ay - 14;
-      const rx = ex + dir * (tw + 8);
-      ctx!.strokeStyle = rgba(tg.v[0], tg.a * 0.9);
+      // Resolved (grow=1) geometry: anchor -> elbow corner -> horizontal run.
+      const cornerX = tg.ax + dir * 14;
+      const cornerY = tg.ay - 14;
+      const runEndX = cornerX + dir * (tw + 8);
+      // Keep the whole label on-canvas: shift the run so the text never clips
+      // the edge at any cell width (the left-pointing labels on a narrow cell).
+      let txFull = dir === 1 ? cornerX + 3 : runEndX + 3;
+      let shift = 0;
+      if (txFull < pad) shift = pad - txFull;
+      else if (txFull + tw > w - pad) shift = w - pad - (txFull + tw);
+      const cX = cornerX + shift;
+      const rX = runEndX + shift;
+      // Draw the elbow growing in from the anchor toward the (shifted) run.
+      const ex = tg.ax + (cX - tg.ax) * grow;
+      const ey = tg.ay + (cornerY - tg.ay) * grow;
+      const rx = ex + (rX - cX) * grow;
+      const la = tg.a * grow;
+      ctx!.strokeStyle = rgba(tg.v[0], la * 0.9);
       ctx!.lineWidth = 1;
       ctx!.beginPath();
       ctx!.moveTo(tg.ax, tg.ay);
       ctx!.lineTo(ex, ey);
       ctx!.lineTo(rx, ey);
       ctx!.stroke();
-      ctx!.fillStyle = rgba(tg.v[0], tg.a);
+      ctx!.fillStyle = rgba(tg.v[0], la);
       ctx!.fillRect(tg.ax - 1.5, tg.ay - 1.5, 3, 3);
-      const tx = dir === 1 ? ex + 3 : rx + 3;
-      const ty = ey - 5;
-      text(label, tx, ty, rgba(CHALK, tg.a * 0.85), 10, 600, 1.4);
-      const lw = ctx!.measureText(label).width;
-      text(verdict, tx + lw, ty, rgba(tg.v[0], tg.a), 10, 700, 1.4);
-    }
-
-    /* the laser sheet: a quad lying across the page, bright near edge */
-    if (env > 0.01) {
-      const ex0 = -LENS_W / 2 - 28;
-      const ex1 = LENS_W / 2 + 28;
-      const zb = -14;
-      const zf = 62;
-      P(ex0, by, zb);
-      const q0x = px;
-      const q0y = py;
-      P(ex1, by, zb);
-      const q1x = px;
-      const q1y = py;
-      P(ex1, by, zf);
-      const q2x = px;
-      const q2y = py;
-      P(ex0, by, zf);
-      const q3x = px;
-      const q3y = py;
-      ctx!.fillStyle = rgba(ACID, 0.07 * env);
-      ctx!.beginPath();
-      ctx!.moveTo(q0x, q0y);
-      ctx!.lineTo(q1x, q1y);
-      ctx!.lineTo(q2x, q2y);
-      ctx!.lineTo(q3x, q3y);
-      ctx!.closePath();
-      ctx!.fill();
-      ctx!.strokeStyle = rgba(ACID, 0.35 * env);
-      ctx!.lineWidth = 1;
-      ctx!.beginPath();
-      ctx!.moveTo(q0x, q0y);
-      ctx!.lineTo(q1x, q1y);
-      ctx!.stroke();
-      ctx!.strokeStyle = rgba(FLASH, 0.95 * env);
-      ctx!.lineWidth = 1.4;
-      ctx!.beginPath();
-      ctx!.moveTo(q3x, q3y);
-      ctx!.lineTo(q2x, q2y);
-      ctx!.stroke();
-      ctx!.strokeStyle = rgba(ACID, 0.5 * env);
-      ctx!.lineWidth = 1;
-      ctx!.beginPath();
-      ctx!.moveTo(q0x, q0y);
-      ctx!.lineTo(q3x, q3y);
-      ctx!.moveTo(q1x, q1y);
-      ctx!.lineTo(q2x, q2y);
-      ctx!.stroke();
-      /* sparks shed behind the beam */
-      for (let sp = 0; sp < cur.sparks; sp++) {
-        const life = (T * 1.7 + sp * 0.37) % 1;
-        const kk = Math.floor(T * 1.7 + sp * 0.37);
-        const sx_ = (hash(sp * 7.3 + kk * 1.7) - 0.5) * (LENS_W + 30);
-        const sz_ = hash(sp * 3.1 + kk * 5.3) * 60 - 6;
-        P(sx_, by - life * 34, sz_);
-        ctx!.fillStyle = rgba(life < 0.2 ? FLASH : ACID, (1 - life) * 0.9 * env);
-        ctx!.fillRect(px - 1, py - 1, 2, 2);
+      if (grow > 0.75) {
+        const textA = (grow - 0.75) / 0.25;
+        const tx = dir === 1 ? ex + 3 : rx + 3;
+        const ty = ey - 5;
+        text(label, tx, ty, rgba(CHALK, tg.a * 0.85 * textA), 10, 600, 1.4);
+        const lw = ctx!.measureText(label).width;
+        text(verdict, tx + lw, ty, rgba(tg.v[0], tg.a * textA), 10, 700, 1.4);
       }
     }
+  }
 
-    hud(T, p, u, by, env, cur, isStatic);
+  function drawBeam(by: number, env: number, cur: ModeCfg): void {
+    const ex0 = -LENS_W / 2 - 28;
+    const ex1 = LENS_W / 2 + 28;
+    const zb = -14;
+    const zf = 62;
+    P(ex0, by, zb);
+    const q0x = px;
+    const q0y = py;
+    P(ex1, by, zb);
+    const q1x = px;
+    const q1y = py;
+    P(ex1, by, zf);
+    const q2x = px;
+    const q2y = py;
+    P(ex0, by, zf);
+    const q3x = px;
+    const q3y = py;
+    ctx!.fillStyle = rgba(ACID, 0.07 * env);
+    ctx!.beginPath();
+    ctx!.moveTo(q0x, q0y);
+    ctx!.lineTo(q1x, q1y);
+    ctx!.lineTo(q2x, q2y);
+    ctx!.lineTo(q3x, q3y);
+    ctx!.closePath();
+    ctx!.fill();
+    ctx!.strokeStyle = rgba(ACID, 0.35 * env);
+    ctx!.lineWidth = 1;
+    ctx!.beginPath();
+    ctx!.moveTo(q0x, q0y);
+    ctx!.lineTo(q1x, q1y);
+    ctx!.stroke();
+    ctx!.strokeStyle = rgba(FLASH, 0.95 * env);
+    ctx!.lineWidth = 1.4;
+    ctx!.beginPath();
+    ctx!.moveTo(q3x, q3y);
+    ctx!.lineTo(q2x, q2y);
+    ctx!.stroke();
+    ctx!.strokeStyle = rgba(ACID, 0.5 * env);
+    ctx!.lineWidth = 1;
+    ctx!.beginPath();
+    ctx!.moveTo(q0x, q0y);
+    ctx!.lineTo(q3x, q3y);
+    ctx!.moveTo(q1x, q1y);
+    ctx!.lineTo(q2x, q2y);
+    ctx!.stroke();
+    /* sparks shed behind the beam */
+    const T = _T;
+    for (let sp = 0; sp < cur.sparks; sp++) {
+      const life = (T * 1.7 + sp * 0.37) % 1;
+      const kk = Math.floor(T * 1.7 + sp * 0.37);
+      const sx_ = (hash(sp * 7.3 + kk * 1.7) - 0.5) * (LENS_W + 30);
+      const sz_ = hash(sp * 3.1 + kk * 5.3) * 60 - 6;
+      P(sx_, by - life * 34, sz_);
+      ctx!.fillStyle = rgba(life < 0.2 ? FLASH : ACID, (1 - life) * 0.9 * env);
+      ctx!.fillRect(px - 1, py - 1, 2, 2);
+    }
   }
 
   function hud(
@@ -702,7 +922,7 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
   ): void {
     const inset = 14;
     const L = 12;
-    const edge = rgba(CHALK, 0.26);
+    const edge = rgba(CHALK, 0.24);
     let i: number;
     ctx!.strokeStyle = edge;
     ctx!.lineWidth = 1;
@@ -724,7 +944,7 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
     /* ruler down the left edge, marker rides the beam */
     const r0 = 58;
     const r1 = h - 58;
-    ctx!.strokeStyle = rgba(CHALK, 0.14);
+    ctx!.strokeStyle = rgba(CHALK, 0.13);
     ctx!.beginPath();
     let y: number;
     for (i = 0, y = r0; y <= r1; i++, y += 11) {
@@ -762,26 +982,25 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
       1.6,
     );
 
+    /* bottom readouts — fitted so nothing is ever clipped at any cell width */
+    const baseline = h - inset - 12;
     const yd = Math.round(yaw * 57.2958);
     const pd = Math.round(pitch * 57.2958);
-    text(
+    const readout =
       'YAW ' +
-        (yd < 0 ? '-' : '+') +
-        ('0' + Math.abs(yd)).slice(-2) +
-        '°   PITCH +' +
-        ('0' + pd).slice(-2) +
-        '°',
-      w - inset - 2,
-      h - inset - 12,
-      rgba(CHALK, 0.34),
-      10,
-      500,
-      1.4,
-      'right',
-    );
+      (yd < 0 ? '-' : '+') +
+      ('0' + Math.abs(yd)).slice(-2) +
+      '°  PITCH ' +
+      (pd < 0 ? '-' : '+') +
+      ('0' + Math.abs(pd)).slice(-2) +
+      '°';
+    const rMax = (w - inset * 2) * 0.42;
+    const [rs, rls] = fitFont(readout, rMax, 9.5, 500, 1.2);
+    text(readout, w - inset - 2, baseline, rgba(CHALK, 0.34), rs, 500, rls, 'right');
+
     let foot: string;
     if (mode === 'scanning') {
-      const pct = u < 0 ? (p < 0 ? 0 : 100) : Math.round(u * 100);
+      const pct = isStatic ? 100 : u < 0 ? (p < 0 ? 0 : 100) : Math.round(u * 100);
       foot =
         'PASS ' +
         ('0' + (isStatic ? 1 : Math.max(1, Math.floor((T - modeT0) / cur.P) + 1))).slice(-2) +
@@ -789,17 +1008,23 @@ export function mountLens(canvas: HTMLCanvasElement, opts: LensOptions = {}): Le
         ('00' + pct).slice(-3) +
         '%';
     } else foot = 'HERO  SPECIFICS  PROOF  CRAFT  CTA';
+    const fMax = (w - inset * 2) * 0.54;
+    const [fs, fls] = fitFont(foot, fMax, 10, 500, 1.4);
     text(
       foot,
       inset + 2,
-      h - inset - 12,
+      baseline,
       rgba(mode === 'scanning' ? ACID : CHALK, mode === 'scanning' ? 0.85 : 0.34),
-      10,
+      fs,
       500,
-      1.4,
+      fls,
     );
     ctx!.textAlign = 'left';
   }
+
+  /* reusable scratch for the dot-lattice active band (no per-frame alloc) */
+  const _near: number[] = new Array(DOTS.length);
+  let _nearN = 0;
 
   /* ── loop ───────────────────────────────────────────────────────────────── */
   function tick(): void {
