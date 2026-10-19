@@ -112,6 +112,19 @@ describe('/r/[id] page — miss with a durable pointer', () => {
     expect(meta.robots).toEqual({ index: false });
     expect(meta.openGraph).toBeUndefined();
   });
+
+  it('keeps the browser-tab <title> static but the share card per-result', async () => {
+    // A client-side roast swaps the result + pushes a new /r/<id> without
+    // re-running generateMetadata, so a per-result <title> went stale (the tab
+    // kept the first site you opened). The tab title is now constant; the
+    // per-result identity lives on the OG/Twitter card that previews read.
+    getCached.mockResolvedValue(fakeResult());
+    const { generateMetadata } = await import('@/app/r/[id]/page');
+    const meta = await generateMetadata({ params: Promise.resolve({ id: ID }) });
+    expect(meta.title).toBe('Roast — score your landing page out of 100');
+    expect(meta.openGraph?.title).toBe('stripe.com scored 73/100');
+    expect(meta.twitter?.title).toBe('stripe.com scored 73/100');
+  });
 });
 
 // The page tests above stub RoastApp; the rest need the real component.

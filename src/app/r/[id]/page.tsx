@@ -12,32 +12,40 @@ type Props = { params: Promise<{ id: string }> };
 
 export const dynamic = 'force-dynamic';
 
+// The browser-tab <title> stays STATIC on every page. A client-side roast
+// swaps the result and pushes a new /r/<id> URL without re-running this server
+// function, so a per-result <title> went stale mid-session (the tab read the
+// FIRST site you opened while the page showed a later one). The per-result
+// identity lives in the OG/Twitter card instead — that is what link previews
+// actually read, so shared /r/<id> links still show "<site> scored N/100".
+const TAB_TITLE = 'Roast — score your landing page out of 100';
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params;
-  if (!isValidId(id)) return { title: 'Roast my site' };
+  if (!isValidId(id)) return { title: TAB_TITLE };
 
   const r = await getCached(id);
-  if (!r) return { title: 'Roast my site', robots: { index: false } };
+  if (!r) return { title: TAB_TITLE, robots: { index: false } };
 
   const origin = await originFromRequest();
-  const title = `${r.displayUrl} scored ${r.score.overall}/100`;
+  const shareTitle = `${r.displayUrl} scored ${r.score.overall}/100`;
   const description = r.verdict;
   const image = `${origin}/api/og?id=${r.id}`;
 
   return {
-    title,
+    title: TAB_TITLE,
     description,
     alternates: { canonical: `${origin}/r/${r.id}` },
     openGraph: {
-      title,
+      title: shareTitle,
       description,
       url: `${origin}/r/${r.id}`,
       type: 'website',
-      images: [{ url: image, width: 1200, height: 630, alt: title }],
+      images: [{ url: image, width: 1200, height: 630, alt: shareTitle }],
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: shareTitle,
       description,
       images: [image],
     },
