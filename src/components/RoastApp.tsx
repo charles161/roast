@@ -505,7 +505,10 @@ export function RoastApp({
                 <Mark size={13} />
                 {WORDMARK}
               </span>
-              <span className="text-right">We read the public HTML. Results are kept for 90 days.</span>
+              <span className="text-right">
+                Inspired by Raphael Schaad&apos;s landing-page thinking.
+                <span className="block">We read the public HTML. Results are kept for 90 days.</span>
+              </span>
             </footer>
           </div>
         ) : null}
