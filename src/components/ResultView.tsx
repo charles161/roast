@@ -5,6 +5,7 @@ import { quoteWrap, teaser, WORDMARK } from '@/lib/share';
 import { track } from '@/lib/track';
 import type { RoastResult } from '@/lib/types';
 import { RoastAnother, ShareBar } from './ShareBar';
+import { EmailCapture } from './EmailCapture';
 import { FixPrompt } from './FixPrompt';
 import { appCheekySubhead } from '@/lib/appState';
 import { Mark } from './Logo';
@@ -255,6 +256,9 @@ export function ResultView({
         <ShareBar r={r} shareUrl={shareUrl} onAnother={onAnother} />
         {onReroast ? <ReroastRow onReroast={onReroast} /> : null}
       </div>
+
+      {/* Optional, non-blocking: the result above is already fully rendered. */}
+      <EmailCapture roastId={r.id} source="result" delayMs={T.tail} />
 
       <Section index="01" title="The roast" delayMs={T.tail}>
         <ul>
