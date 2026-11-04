@@ -102,6 +102,22 @@ describe('extractFacts', () => {
   });
 });
 
+describe('CTA detection', () => {
+  it('recognises "Connect …" style actions as CTAs', () => {
+    const f = page('<a href="#/signup">Connect my agents</a>');
+    expect(f.ctas).toContain('Connect my agents');
+  });
+
+  it('prefers a real action over a nav sign-in link as the primary CTA', () => {
+    const f = page('<nav><a href="#/login">Sign in</a></nav><a class="btn" href="#/signup">Connect my agents</a>');
+    expect(currentCta(f)).toBe('Connect my agents');
+  });
+
+  it('still falls back to sign-in when it is the only action', () => {
+    expect(currentCta(page('<a href="/login">Sign in</a>'))).toBe('Sign in');
+  });
+});
+
 describe('hasEnoughContent', () => {
   it('rejects an effectively empty page', () => {
     expect(hasEnoughContent(page('<p>hi</p>'))).toBe(false);

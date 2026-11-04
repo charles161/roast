@@ -49,7 +49,10 @@ const BUZZWORDS = [
   'one-stop', 'all-in-one', 'hyper-', 'blazing fast', 'lightning fast',
 ];
 
-const CTA_WORDS = /^(get|start|try|book|request|sign|join|buy|claim|schedule|download|create|build|see|watch|talk|contact|learn|explore|discover|launch|begin|subscribe|add|install|upgrade|demo|pricing|free)/i;
+const CTA_WORDS = /^(get|start|try|book|request|sign|join|buy|claim|schedule|download|create|build|see|watch|talk|contact|learn|explore|discover|launch|begin|subscribe|add|install|upgrade|demo|pricing|free|connect|ask|chat|open|use|deploy|send|generate|upload|register|order|shop|apply)/i;
+
+// Auth links ("Sign in", "Log in") are navigation for existing users, not the page's ask.
+const AUTH_LINK = /^(sign\s*in|log\s*in|login|signin|my account)$/i;
 
 function stripTags(html: string): string {
   return html
@@ -234,7 +237,7 @@ export function currentSubhead(f: PageFacts): string {
 }
 
 export function currentCta(f: PageFacts): string {
-  return f.ctas[0] || '(no clear CTA found)';
+  return f.ctas.find((c) => !AUTH_LINK.test(c.trim())) || f.ctas[0] || '(no clear CTA found)';
 }
 
 /** Is there enough copy here to judge at all? */
