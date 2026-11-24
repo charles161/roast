@@ -1,153 +1,99 @@
-# Roast + Glow-up
+# Roast
 
-Paste a URL → in ~6s get a sharp, specific roast of the site's messaging, a
-score out of 100 (Hook / Clarity / Trust / Design-signal), a side-by-side
-**glow-up** of the headline, subhead and CTA, 3 concrete fixes, and a
-shareable card with an auto-generated OG image.
+[![License: MIT](https://img.shields.io/badge/License-MIT-CCFF3F.svg)](./LICENSE)
+[![Live](https://img.shields.io/badge/Live-roast.lightslips.ai-0A0A0A.svg)](https://roast.lightslips.ai)
+[![CI](https://github.com/charles161/roast/actions/workflows/ci.yml/badge.svg)](https://github.com/charles161/roast/actions/workflows/ci.yml)
 
-## Run it
+**Your landing page is probably lying to you.**
+
+Paste a URL → in ~6 seconds get a sharp, specific roast of your messaging, a calibrated score out of 100 across five dimensions (**Hero / Specifics / Proof / Craft / CTA**), a side-by-side **glow-up** of your headline, subhead, and CTA, an AI-agent-ready fix prompt (plus `/r/<id>.md` for coding agents), and a shareable card with an auto-generated OG image.
+
+Try it live at **[roast.lightslips.ai](https://roast.lightslips.ai)**.
+
+<p align="center">
+  <img src="./docs/img/roast-hero.png" alt="Roast — landing-page roaster and scorer" width="100%" />
+</p>
+
+## Quick Start
 
 ```bash
+git clone https://github.com/charles161/roast.git
+cd roast
+cp .env.example .env.local   # set GATEWAY_URL and GATEWAY_KEY
 npm install
-npm run build
-npm run start          # binds 127.0.0.1:3042
-PORT=3099 npm run start # port is configurable
+npm run dev                  # http://127.0.0.1:3042
 ```
 
-Env (`.env.local`, never committed, never sent to the client):
+For production:
 
-| var | meaning |
-|---|---|
-| `GATEWAY_URL` | Vercel AI Gateway chat completions endpoint |
-| `GATEWAY_KEY` | gateway bearer token (server-side only) |
-| `JEV_MODEL` | evaluation model for scoring (`typesafe-ai/jev-1.14.0`) |
-| `ROAST_MODEL` | copy model for roast + glow-up (`anthropic/claude-haiku-5.5`) |
-| `PORT` | listen port, default 3042 |
-| `DAILY_LLM_USD_CAP` | hard daily spend ceiling, default 5 |
-| `PUBLIC_BASE_URL` | optional; absolute origin used in share links + OG tags |
-| `ROAST_CACHE_DIR` | optional; defaults to `./.cache` |
+```bash
+npm run build
+npm run start                # binds 127.0.0.1:3042
+PORT=3099 npm run start      # custom port
+```
 
-## How it works
+### Environment Variables
 
-`POST /api/roast` runs the whole pipeline server-side:
+See [`.env.example`](./.env.example). Keep secrets in `.env.local` (never committed, never sent to the browser):
 
-1. **Normalize** the URL (`src/lib/url.ts`) — scheme, `www.`, tracking params
-   and param order all collapse so one site is one cache key.
-2. **SSRF guard** (`src/lib/ssrf.ts`) — http(s) only, web ports only, and every
-   resolved IP must be public. Re-checked on *every* redirect hop.
-3. **Fetch** (`src/lib/fetchPage.ts`) — 8s timeout, 2MB body cap, manual
-   redirects, HTML content types only.
-4. **Extract** (`src/lib/extract.ts`) — deterministic regex parse into a
-   structured `PageFacts`. No LLM, so it is free and fast. Everything that
-   reaches a model is sanitized and length-capped first.
-5. **Lens** (`src/lib/lens.ts`) — deterministic detectors: the five-second
-   test, jargon density, the CTA audit, and the slop markers. Free, and it is
-   what the scorer is handed instead of vibes.
-6. **Score** (`src/lib/score.ts`) — Jev judges five rubric ladders against that
-   evidence. Its output tokens are free. Falls back to the deterministic
-   rubric if Jev is down.
-7. **Write** (`src/lib/roast.ts`) — one Haiku call returns the roast, the
-   glow-up and the score reasons as strict JSON.
+| Variable | Meaning |
+| --- | --- |
+| `GATEWAY_URL` | OpenAI-compatible AI Gateway base URL or `/chat/completions` endpoint |
+| `GATEWAY_KEY` | Gateway bearer token (server-side only; `AI_GATEWAY_API_KEY` also accepted) |
+| `JEV_MODEL` | Evaluation model for rubric scoring (default `typesafe-ai/jev-1.14.0`) |
+| `ROAST_MODEL` | Copy model for roast + glow-up (default `anthropic/claude-haiku-5.5`) |
+| `DAILY_LLM_USD_CAP` | Hard daily LLM spend ceiling in USD (default `5`) |
+| `PUBLIC_BASE_URL` | Optional absolute origin used in share links and OG metadata |
+| `ROAST_CACHE_DIR` | Optional local cache directory (default `./.cache`) |
+| `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Optional Upstash / Vercel KV store (falls back to local disk when unset) |
+| `POSTHOG_KEY` / `NEXT_PUBLIC_POSTHOG_KEY` | Optional PostHog analytics |
 
-Result pages live at `/r/<id>` with a server-rendered OG image at
-`/api/og?id=<id>`, so a pasted link previews richly.
+## How It Works
 
-## The share surfaces
+`POST /api/roast` runs the full pipeline server-side:
 
-The on-page card (`#share-card`) and the OG image are deliberately the same
-design: favicon, site name, the score dial, the verdict, the best roast line,
-before -> after, and the `roast.lightslips.ai` wordmark, so a screenshot and a
-link preview carry the same thing.
+1. **Normalize** (`src/lib/url.ts`) — scheme, `www.`, tracking params, and param order collapse so one site maps to one cache key.
+2. **SSRF guard** (`src/lib/ssrf.ts`, `src/lib/pinnedFetch.ts`) — `http(s)` only, web ports only, resolve-once IP pinning against DNS rebinding, private/loopback/link-local/CGNAT ranges rejected on *every* redirect hop.
+3. **Fetch** (`src/lib/fetchPage.ts`) — 8s timeout, 2MB body cap, manual redirects, HTML content types only.
+4. **Extract** (`src/lib/extract.ts`) — deterministic parse into structured `PageFacts` (zero LLM cost). All text is sanitized and length-capped before reaching any model.
+5. **Lens** (`src/lib/lens.ts`) — deterministic detectors for the five-second test, jargon density, CTA audit, and AI-slop markers. Handed to the scorer as measured evidence rather than vibes.
+6. **Score** (`src/lib/score.ts`) — Jev evaluates five ordered rubric ladders against that evidence, with automatic fallback to the deterministic rubric if Jev is unavailable.
+7. **Write** (`src/lib/roast.ts`) — a single LLM call produces the roast lines, side-by-side glow-up, 3 concrete fixes, and an imperative coding-agent fix prompt as strict JSON.
 
-- `src/lib/share.ts` is the single source for share copy — the tweet body, the
-  quote picker and `quoteWrap`, which stops us double-quoting a roast line that
-  already opens by quoting the site. The tweet budget counts the link as 23
-  characters, the way X does.
-- `src/lib/favicon.ts` inlines the site's favicon for the OG image, because
-  Satori cannot fetch one itself. The URL comes off a page we were asked to
-  roast, so it goes through the same SSRF guard as the page fetch, with no
-  redirects, a 1.2s timeout and a 192KB cap. Every failure falls back to a
-  monogram rather than a broken preview.
-- `src/lib/counter.ts` counts live entries in the result cache. It is the only
-  number on the page that is not from the current result, and it is read off
-  disk — nothing here is decorative. It stays hidden below `MIN_DISPLAY`.
+Result pages live at `/r/<id>`, an agent-readable Markdown brief is served at `/r/<id>.md`, and social previews are rendered on-demand at `/api/og?id=<id>`.
 
-The reveal (dial sweep, count-up, staggered sub-scores and roast lines) runs on
-transform/opacity only and is disabled under `prefers-reduced-motion`.
+## The Lens
 
-## The lens
+Five weighted dimensions inspired by Raphael Schaad's landing-page rubric:
 
-Five weighted dimensions, after Raphael Schaad's landing-page rubric:
-
-| dimension | weight | the question |
-|---|---|---|
-| Hero | 30% | Can a stranger tell what this is, who it is for, and what they get, in five seconds? |
-| Specifics | 20% | Plain words over jargon, and copy that matches what the page shows |
-| Proof | 15% | Named customers, real numbers, visible pricing |
-| Craft | 25% | Does the page read as deliberately made, or generated? |
-| CTA | 10% | One clear ask, in the reader's own words |
-
-The stance, in our words: a landing page is a customer-acquisition channel,
-not an art project; you are the editor, and a line that would fit on any other
-company's homepage was not written, it was generated.
+| Dimension | Weight | Question |
+| --- | --- | --- |
+| **Hero** | 30% | Can a stranger tell what this is, who it is for, and what they get in five seconds? |
+| **Craft** | 25% | Does the page read as deliberately made, or generated? |
+| **Specifics** | 20% | Plain words over jargon, and copy that matches what the page shows |
+| **Proof** | 15% | Named customers, real numbers, visible pricing |
+| **CTA** | 10% | One clear ask, in the reader's own words |
 
 ### Calibration
 
-`tests/calibration.test.ts` is the anchor. It scores **captured `PageFacts`
-fixtures** — the real parse of stripe.com, linear.app, vercel.com and
-google.com — and asserts the bands hold: world-class >= 90, an app shell
-10-25, generated slop 30-48. If a change moves those numbers it has changed
-what the product claims, and that should be deliberate.
+`tests/calibration.test.ts` anchors the rubric against captured real `PageFacts` fixtures (`stripe.com`, `linear.app`, `vercel.com`, `google.com`, and generated slop) so world-class pages score `~90+`, generated slop lands `30–48`, and bare app shells land `10–25`.
 
-Two calibration details worth knowing:
+## Safety & Cost Guards
 
-- `calibrate()` is the identity up to a knee at 72 and concave above it. Jev
-  returns the *expected* rung index over a distribution, so a page it is sure
-  sits on the top rung comes back near 3.8 of 4. Without the curve the best
-  pages on the internet park around 90 and the top of the scale is dead.
-- The craft ladder is written entirely in terms of what is observable in HTML.
-  An earlier version asked about visual design, which the model cannot see, so
-  nothing could ever reach the top rung.
+- **90-day cache + self-healing share links** — per-URL cache (KV or atomic local disk) plus a durable `id → URL` pointer so expired `/r/<id>` links regenerate cleanly on open.
+- **Per-IP rate limits** — `10/min` and `60/hr` sliding windows (rejected requests don't extend the penalty).
+- **Hard daily spend cap** — `DAILY_LLM_USD_CAP`, metered from real gateway usage; once reached, cached results keep serving while new roasts pause.
 
-### A note on Jev
+> **Deployment note:** Client IP is read from proxy headers (`x-real-ip` / `x-forwarded-for`). Deploy behind a trusted proxy (such as Vercel) that overwrites client IP headers.
 
-Jev is an **evaluation** model, not a chat model: it is called at
-`POST /v1/evaluate` with `{state, questions}` and cannot emit free text, so
-extraction is done in code rather than by Jev.
-
-Its `score` questions take an **ordered rubric ladder**, and the returned
-`score` is the expected rung index, so it ranges `0..criteria.length-1` — not
-`0..1`. `normalizeScore()` divides by `levels - 1`; dividing by 100 silently
-scores every site near zero.
-
-## Guards
-
-- **Cache** — per-URL, 90-day TTL, memory LRU over an atomic on-disk store, so a
-  viral link keeps resolving across restarts and costs nothing to re-serve.
-  Each cached result also leaves a permanent id -> URL pointer (`roast:u:<id>`,
-  no TTL), so a `/r/<id>` link whose result has expired regenerates itself on
-  open (a normal roast, through the usual SSRF guard / rate limit / spend cap)
-  instead of dying.
-- **Rate limit** — 10/min and 60/hr per IP, sliding windows. Rejected requests
-  are not recorded, so hammering cannot extend the penalty.
-- **Spend cap** — `DAILY_LLM_USD_CAP`, metered from the real per-generation
-  cost the gateway reports, persisted to disk so a restart cannot reset it.
-  At the cap we serve cached results only.
-
-> Deployment note: client IP comes from `cf-connecting-ip` / `x-real-ip` /
-> `x-forwarded-for`. Only run this behind a proxy that overwrites those
-> headers (Cloudflare does), or the rate limit can be spoofed.
-
-## Tests
+## Testing
 
 ```bash
-npm test        # 302 unit tests
-npm run typecheck
+npm test            # 586 unit tests across 37 test files
+npm run typecheck   # TypeScript strict check
+npm run build       # Next.js production build
 ```
 
-Covers URL normalization, the SSRF guard (IPv4/IPv6 ranges, DNS rebinding,
-redirect hops), score parsing, the cache, the rate limiter, the spend cap, the
-model-output JSON parser, the share-intent builder, the score -> colour bands,
-the cache counter, the lens detectors, the rubric calibration against real
-captured fixtures, and the brand mark (including that `icon.svg` has not
-drifted from `brand.ts`).
+## License
+
+[MIT](./LICENSE)
