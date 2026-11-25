@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { track } from '@/lib/track';
+import { useState } from 'react';
 
 type Status = 'idle' | 'sending' | 'done' | 'error';
 
@@ -21,22 +20,12 @@ export function EmailCapture({
 }) {
   const [email, setEmail] = useState('');
   const [status, setStatus] = useState<Status>('idle');
-  const shown = useRef(false);
-
-  // Fire once when the field actually renders (opt-in analytics; no-op w/o key).
-  useEffect(() => {
-    if (shown.current) return;
-    shown.current = true;
-    track('email_capture_shown', { source, roastId });
-  }, [source, roastId]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     const value = email.trim();
     if (!value || status === 'sending') return;
     setStatus('sending');
-    // Fire the funnel event up front; analytics must never gate the request.
-    track('email_captured', { source, roastId });
     try {
       const res = await fetch('/api/subscribe', {
         method: 'POST',

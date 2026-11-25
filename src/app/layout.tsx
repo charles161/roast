@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { JetBrains_Mono, Inter } from 'next/font/google';
 import './globals.css';
-import { PostHogProvider } from '@/components/PostHogProvider';
 
 // Mono is still the interface: the wordmark, the giant headline, every label,
 // score, and the `>` input are set in it.
@@ -61,10 +60,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${jet.variable} ${inter.variable}`}>
       <body className="min-h-dvh font-mono antialiased">
-        <PostHogProvider>
-          <div className="grid-bg" aria-hidden />
-          <div className="relative z-10">{children}</div>
-        </PostHogProvider>
+        <div className="grid-bg" aria-hidden />
+        <div className="relative z-10">{children}</div>
       </body>
     </html>
   );

@@ -28,7 +28,6 @@ function result(): RoastResult {
 const roastUrl = vi.fn();
 const getCached = vi.fn();
 const rateLimit = vi.fn();
-const captureServer = vi.fn(async () => {});
 
 async function post(body: unknown, raw?: string) {
   const { POST } = await import('@/app/api/roast/route');
@@ -46,7 +45,6 @@ beforeEach(() => {
   roastUrl.mockReset().mockResolvedValue({ result: result(), cached: false, costUsd: 0.01 });
   getCached.mockReset();
   rateLimit.mockReset().mockResolvedValue({ ok: true, retryAfterSec: 0, remaining: 9 });
-  captureServer.mockClear();
   vi.doMock('@/lib/pipeline', async () => ({
     ...(await vi.importActual<typeof import('@/lib/pipeline')>('@/lib/pipeline')),
     roastUrl,
@@ -56,7 +54,6 @@ beforeEach(() => {
     ...(await vi.importActual<typeof import('@/lib/ratelimit')>('@/lib/ratelimit')),
     rateLimit,
   }));
-  vi.doMock('@/lib/analytics', () => ({ captureServer }));
 });
 
 function freshArg(): unknown {

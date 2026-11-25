@@ -46,7 +46,6 @@ See [`.env.example`](./.env.example). Keep secrets in `.env.local` (never commit
 | `PUBLIC_BASE_URL` | Optional absolute origin used in share links and OG metadata |
 | `ROAST_CACHE_DIR` | Optional local cache directory (default `./.cache`) |
 | `KV_REST_API_URL` / `KV_REST_API_TOKEN` | Optional Upstash / Vercel KV store (falls back to local disk when unset) |
-| `POSTHOG_KEY` / `NEXT_PUBLIC_POSTHOG_KEY` | Optional PostHog analytics |
 
 ## How It Works
 

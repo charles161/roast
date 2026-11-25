@@ -9,7 +9,6 @@ import { RoastAnother } from './ShareBar';
 import { WORDMARK } from '@/lib/share';
 import { getRecent, pushRecent, type RecentEntry } from '@/lib/history';
 import { lensModeForLoading } from '@/lib/scanEngine';
-import { track } from '@/lib/track';
 import type { ApiError, RoastResult } from '@/lib/types';
 
 const LOADING_LINES = [
@@ -170,11 +169,6 @@ export function RoastApp({
     // Mount-only on purpose: the props describe the page the visitor landed on.
   }, []);
 
-  // Fire once per distinct result shown — fresh scan or a shared card.
-  useEffect(() => {
-    if (result) track('result_viewed', { id: result.id, overall: result.score.overall });
-  }, [result]);
-
   /**
    * `heal`: this roast is the page regenerating the link the visitor opened
    * (not something they asked for). It starts already in the loading state,
@@ -184,8 +178,6 @@ export function RoastApp({
   async function run(raw: string, fresh = false, heal = false) {
     const target = raw.trim();
     if (!target || (loading && !heal)) return;
-    if (heal) track('link_heal_started', { inputLen: target.length });
-    else track('scan_submitted', fresh ? { inputLen: target.length, fresh: true } : { inputLen: target.length });
     setExpiredOpen(false);
     setLoading(true);
     setError(null);
@@ -415,7 +407,6 @@ export function RoastApp({
                     <a
                       key={e.id}
                       href={`/r/${e.id}`}
-                      onClick={() => track('recent_clicked', { id: e.id })}
                       className="flex items-center gap-1.5 border border-line px-2.5 py-1 text-chalk/80 transition-colors hover:border-acid hover:text-acid"
                     >
                       <span className="max-w-[14ch] truncate">{e.displayUrl}</span>
