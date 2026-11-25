@@ -9,7 +9,7 @@ const nextConfig = {
   },
   async headers() {
     // Baseline hardening for a public tool. No CSP here on purpose: the OG
-    // renderer + analytics make a strict policy fragile, and a wrong CSP breaks
+    // renderer makes a strict policy fragile, and a wrong CSP breaks
     // the launch. HSTS is added by the platform edge.
     return [
       {

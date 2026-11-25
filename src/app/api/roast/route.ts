@@ -4,7 +4,6 @@ import { getCached, roastUrl } from '@/lib/pipeline';
 import { clientIp, rateLimit } from '@/lib/ratelimit';
 import { isValidId } from '@/lib/cache';
 import { apiErrorFor } from '@/lib/apiError';
-import { captureServer } from '@/lib/analytics';
 import type { ApiError } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -54,21 +53,12 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { result, cached, costUsd } = await roastUrl(normalized, { fresh });
-    await captureServer('roast_completed', {
-      displayUrl: result.displayUrl,
-      overall: result.score.overall,
-      cached,
-      cost_usd: costUsd,
-      degraded: Boolean(result.degraded),
-    });
+    const { result, cached } = await roastUrl(normalized, { fresh });
     return NextResponse.json(result, {
       headers: { 'x-roast-cache': cached ? 'hit' : 'miss' },
     });
   } catch (err) {
     const m = apiErrorFor(err);
-    if (m.code === 'capped') await captureServer('roast_capped', {});
-    else await captureServer('roast_error', { code: m.code });
     if (m.code === 'llm') console.error('[roast] pipeline failed', err);
     return fail(m.code, m.error, m.status);
   }

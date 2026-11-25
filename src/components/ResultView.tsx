@@ -1,8 +1,6 @@
-import { useEffect, useRef } from 'react';
 import { ScoreDial, SubScoreRow } from './ScoreDial';
 import { band, temperature } from '@/lib/grade';
 import { quoteWrap, teaser, WORDMARK } from '@/lib/share';
-import { track } from '@/lib/track';
 import type { RoastResult } from '@/lib/types';
 import { RoastAnother, ShareBar } from './ShareBar';
 import { EmailCapture } from './EmailCapture';
@@ -222,29 +220,11 @@ export function ResultView({
   /** Re-submit this result's URL for a fresh (uncached) roast. Omit to hide the action. */
   onReroast?: () => void;
 }) {
-  const glowRef = useRef<HTMLDivElement>(null);
   // A result just rendered (fresh roast, opened /r/<id> link, self-heal, or
   // Re-roast): glide to it once, so the visitor sees the roast landed.
   const rootRef = useRevealOnResult<HTMLDivElement>(revealKey(r));
   // Old cached results predate the field; treat a missing flag as a landing page.
   const isLanding = r.isLandingPage !== false;
-
-  // Fire once when the glow-up (the "magic") actually comes into view.
-  useEffect(() => {
-    const el = glowRef.current;
-    if (!el || typeof IntersectionObserver === 'undefined') return;
-    const obs = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          track('glowup_viewed');
-          obs.disconnect();
-        }
-      },
-      { threshold: 0.3 },
-    );
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
 
   return (
     // scroll-mt-6: a small breathing gap above the card when it is scrolled into
@@ -295,7 +275,7 @@ export function ResultView({
 
       {isLanding ? (
         <>
-          <div ref={glowRef}>
+          <div>
             <Section index="03" title="Same product, better words">
               <div className="grid gap-4">
                 <Compare label="Headline" before={r.before.headline} after={r.after.headline} />
@@ -323,7 +303,7 @@ export function ResultView({
           ) : null}
         </>
       ) : (
-        <div ref={glowRef}>
+        <div>
           <Section index="03" title="The glow-up">
             <div className="border border-line p-8 text-center">
               <p className="text-pretty text-title font-bold tracking-[-0.02em] text-chalk">
